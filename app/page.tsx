@@ -18,7 +18,7 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step === "email") {
       changeStep("otp");
@@ -35,7 +35,42 @@ export default function Home() {
     }
     if (step === "signin") {
       setLoading(true);
-      router.push("/dashboard");
+      setNotice("");
+      
+      try {
+        const formData = new FormData(event.currentTarget);
+        const password = formData.get("password") as string;
+        
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3004/api";
+        const res = await fetch(`${baseUrl}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          const errorMsg = Array.isArray(data.message) ? data.message.join(", ") : data.message;
+          throw new Error(errorMsg || "Failed to login");
+        }
+        
+        const user = data.data?.user || data.user;
+        const tokens = data.data?.tokens || data.tokens;
+        
+        if (user?.role !== "ADMIN") {
+          throw new Error("Access denied. Only Admins can access the dashboard.");
+        }
+        
+        localStorage.setItem("dashboard_access_token", tokens.accessToken);
+        localStorage.setItem("dashboard_user", JSON.stringify(user));
+        
+        router.push("/dashboard");
+      } catch (error: any) {
+        setNotice(error.message || "An error occurred during login.");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
   }

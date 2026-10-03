@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import DashboardShell from "@/components/DashboardShell";
+import QueryProvider from "@/providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "CityDeals | Admin Dashboard",
@@ -15,7 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <DashboardShell>{children}</DashboardShell>
+        <QueryProvider>
+          <DashboardShell>{children}</DashboardShell>
+        </QueryProvider>
       </body>
     </html>
   );

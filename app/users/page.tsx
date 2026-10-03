@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/api/client";
 import Modal from "@/components/Modal";
 
 interface AppUser {
@@ -128,20 +130,62 @@ const initialUsers: AppUser[] = [
 ];
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<AppUser[]>(initialUsers);
+  const queryClient = useQueryClient();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  // Toggle user status: Active <-> Suspended
+  const { data: users = [], isLoading: loading } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const data = await apiClient.get('/admin/users');
+      if (!Array.isArray(data)) return [];
+      return data.map((u: any) => ({
+        id: u.id,
+        name: u.fullName || "Unknown",
+        email: u.email || "",
+        phone: u.phoneNumber || "Not provided",
+        joined: new Date(u.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" }),
+        saved: u._count?.savedCoupons || 0,
+        redeemed: u._count?.couponRedemptions || 0,
+        status: u.status === "ACTIVE" ? "Active" : u.status === "SUSPENDED" ? "Suspended" : "Banned",
+      }));
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string, status: string }) => {
+      return apiClient.patch(`/admin/users/${id}/status`, { status: status.toUpperCase() });
+    },
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey: ['users'] });
+      const previousUsers = queryClient.getQueryData<AppUser[]>(['users']);
+      
+      queryClient.setQueryData<AppUser[]>(['users'], (old) => {
+        if (!old) return old;
+        return old.map(u => u.id === variables.id ? { ...u, status: variables.status as AppUser['status'] } : u);
+      });
+      
+      if (selectedUser && selectedUser.id === variables.id) {
+        setSelectedUser(prev => prev ? { ...prev, status: variables.status as AppUser['status'] } : null);
+      }
+      setActiveMenuId(null);
+      
+      return { previousUsers };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousUsers) {
+        queryClient.setQueryData(['users'], context.previousUsers);
+      }
+      console.error("Failed to update status:", err);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+  });
+
   const handleToggleStatus = (id: string, newStatus: "Active" | "Suspended" | "Banned") => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, status: newStatus } : u))
-    );
-    if (selectedUser && selectedUser.id === id) {
-      setSelectedUser((prev) => (prev ? { ...prev, status: newStatus } : null));
-    }
-    setActiveMenuId(null);
+    updateStatusMutation.mutate({ id, status: newStatus });
   };
 
   const handleOpenDetails = (user: AppUser) => {
