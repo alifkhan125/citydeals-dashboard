@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from '@/components/Toast';
 
 const baseURL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3004/api";
 
@@ -82,6 +83,7 @@ apiClient.interceptors.response.use(
         if (typeof window !== 'undefined') {
           localStorage.removeItem('dashboard_access_token');
           localStorage.removeItem('dashboard_refresh_token');
+          toast.error("Your session has expired. Please sign in again.", { title: "Session Expired" });
           window.location.href = '/';
         }
         return Promise.reject(err);

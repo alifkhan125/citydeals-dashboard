@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { toast } from "./Toast";
 
 const assetBase = "/assets/dashboard/";
 
@@ -110,9 +111,17 @@ export default function Sidebar({ activeItem, onNavigate, className = "" }: Side
 
       <div className="border-t border-black/10 p-4">
         <Link
-          className="flex min-h-14 items-center gap-3 rounded-lg p-2 text-[#475569] no-underline hover:bg-slate-50"
           href="/"
-          onClick={onNavigate}
+          className="flex min-h-14 items-center gap-3 rounded-lg p-2 text-[#475569] no-underline hover:bg-slate-50"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("dashboard_access_token");
+              localStorage.removeItem("dashboard_refresh_token");
+              localStorage.removeItem("dashboard_user");
+            }
+            toast.info("You have been signed out.", { title: "Signed Out" });
+            if (onNavigate) onNavigate();
+          }}
         >
           <span className="grid size-10 place-items-center rounded-lg bg-slate-50">
             <Image src={`${assetBase}imgVuesaxLinearLogout.svg`} alt="" width={20} height={20} />
