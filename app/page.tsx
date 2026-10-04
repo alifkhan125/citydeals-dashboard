@@ -11,10 +11,15 @@ export default function Home() {
   const [step, setStep] = useState<"signin" | "email" | "otp">("signin");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
+  const [emailError, setEmailError] = useState(false);
+  const [passwordError, setPasswordError] = useState(false);
+
   function changeStep(next: "signin" | "email" | "otp") {
     setStep(next);
     setNotice("");
     setOtp("");
+    setEmailError(false);
+    setPasswordError(false);
   }
   const [visible, setVisible] = useState(false);
   const [notice, setNotice] = useState("");
@@ -24,9 +29,11 @@ export default function Home() {
     event.preventDefault();
     if (step === "email") {
       if (!email.trim()) {
+        setEmailError(true);
         toast.error("Please enter a valid email address.", { title: "Email Required" });
         return;
       }
+      setEmailError(false);
       toast.info(`Verification code sent to ${email}`, { title: "Code Sent" });
       changeStep("otp");
       return;
@@ -46,16 +53,40 @@ export default function Home() {
       return;
     }
     if (step === "signin") {
+      const formData = new FormData(event.currentTarget);
+      const password = (formData.get("password") as string) || "";
+      const trimmedEmail = email.trim();
+
+      let hasError = false;
+      if (!trimmedEmail) {
+        setEmailError(true);
+        hasError = true;
+      } else {
+        setEmailError(false);
+      }
+
+      if (!password) {
+        setPasswordError(true);
+        hasError = true;
+      } else {
+        setPasswordError(false);
+      }
+
+      if (hasError) {
+        if (!trimmedEmail && !password) {
+          toast.error("Please enter both email and password.", { title: "Required Fields" });
+        } else if (!trimmedEmail) {
+          toast.error("Please enter your email address.", { title: "Email Required" });
+        } else {
+          toast.error("Please enter your password.", { title: "Password Required" });
+        }
+        return;
+      }
+
       setLoading(true);
       setNotice("");
       
       try {
-        const formData = new FormData(event.currentTarget);
-        const password = formData.get("password") as string;
-        
-        if (!email.trim() || !password) {
-          throw new Error("Please enter both email and password.");
-        }
 
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3004/api";
         
@@ -160,11 +191,13 @@ export default function Home() {
             <div className="form-fields">
               {step !== "otp" && <div className="field-group">
                 <label htmlFor="email">Email <span>*</span></label>
-                <div className="input-shell"><Image src="/assets/email.svg" alt="" width={22} height={22} /><input id="email" name="email" type="email" autoComplete="username" placeholder="Example@gmail.com" value={email} onChange={(event) => setEmail(event.target.value)} autoFocus={step === "email"} required /></div>
+                <div className={`input-shell ${emailError ? "!border-rose-500 bg-rose-50/20" : ""}`}><Image src="/assets/email.svg" alt="" width={22} height={22} /><input id="email" name="email" type="email" autoComplete="username" placeholder="Example@gmail.com" value={email} onChange={(event) => { setEmail(event.target.value); if (emailError) setEmailError(false); }} autoFocus={step === "email"} required /></div>
+                {emailError && <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">Email is required</span>}
               </div>}
               {step === "signin" && <div className="field-group">
                 <label htmlFor="password">Password <span>*</span></label>
-                <div className="input-shell"><Image src="/assets/lock.svg" alt="" width={22} height={22} /><input id="password" name="password" type={visible ? "text" : "password"} autoComplete="current-password" placeholder="********" required /><button className="password-toggle" type="button" aria-label={visible ? "Hide password" : "Show password"} aria-pressed={visible} onClick={() => setVisible(!visible)}><Image src="/assets/eye-slash.svg" alt="" width={22} height={22} /></button></div>
+                <div className={`input-shell ${passwordError ? "!border-rose-500 bg-rose-50/20" : ""}`}><Image src="/assets/lock.svg" alt="" width={22} height={22} /><input id="password" name="password" type={visible ? "text" : "password"} autoComplete="current-password" placeholder="********" onChange={() => { if (passwordError) setPasswordError(false); }} required /><button className="password-toggle" type="button" aria-label={visible ? "Hide password" : "Show password"} aria-pressed={visible} onClick={() => setVisible(!visible)}><Image src="/assets/eye-slash.svg" alt="" width={22} height={22} /></button></div>
+                {passwordError && <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">Password is required</span>}
                 <button className="forgot-password" type="button" onClick={() => changeStep("email")}>Forgot Password?</button>
               </div>}
               {step === "otp" && <div className="field-group">
