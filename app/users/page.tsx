@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/api/client";
 import Modal from "@/components/Modal";
+import { toast } from "@/components/Toast";
 
 interface AppUser {
   id: string;
@@ -140,7 +141,7 @@ export default function UsersPage() {
     queryFn: async () => {
       const data = await apiClient.get('/admin/users');
       if (!Array.isArray(data)) return [];
-      return data.map((u: any) => ({
+      return data.map((u: any): AppUser => ({
         id: u.id,
         name: u.fullName || "Unknown",
         email: u.email || "",
@@ -148,7 +149,7 @@ export default function UsersPage() {
         joined: new Date(u.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" }),
         saved: u._count?.savedCoupons || 0,
         redeemed: u._count?.couponRedemptions || 0,
-        status: u.status === "ACTIVE" ? "Active" : u.status === "SUSPENDED" ? "Suspended" : "Banned",
+        status: (u.status === "ACTIVE" ? "Active" : u.status === "SUSPENDED" ? "Suspended" : "Banned") as AppUser["status"],
       }));
     },
   });
@@ -173,10 +174,12 @@ export default function UsersPage() {
       
       return { previousUsers };
     },
-    onError: (err, variables, context) => {
+    onError: (err: any, variables, context) => {
       if (context?.previousUsers) {
         queryClient.setQueryData(['users'], context.previousUsers);
       }
+      const errMsg = err?.response?.data?.message || "Failed to update status";
+      toast.error(errMsg, { title: "Update Failed" });
       console.error("Failed to update status:", err);
     },
     onSettled: () => {

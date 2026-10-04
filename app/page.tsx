@@ -4,6 +4,8 @@ import { useState, type FormEvent } from "react";
 import hero from "../assets/lending-hero.png";
 import { useRouter } from "next/navigation";
 
+import { toast } from "@/components/Toast";
+
 export default function Home() {
   const router = useRouter();
   const [step, setStep] = useState<"signin" | "email" | "otp">("signin");
@@ -21,16 +23,26 @@ export default function Home() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (step === "email") {
+      if (!email.trim()) {
+        toast.error("Please enter a valid email address.", { title: "Email Required" });
+        return;
+      }
+      toast.info(`Verification code sent to ${email}`, { title: "Code Sent" });
       changeStep("otp");
       return;
     }
     if (step === "otp") {
       if (otp !== "123456") {
-        setNotice("Incorrect demo code. Enter 123456 to continue.");
+        const errorMsg = "Incorrect demo code. Enter 123456 to continue.";
+        setNotice(errorMsg);
+        toast.error(errorMsg, { title: "Verification Failed" });
         return;
       }
       setLoading(true);
-      router.push("/dashboard");
+      toast.success("Verification successful! Redirecting...", { title: "Success" });
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 600);
       return;
     }
     if (step === "signin") {
@@ -41,33 +53,83 @@ export default function Home() {
         const formData = new FormData(event.currentTarget);
         const password = formData.get("password") as string;
         
+        if (!email.trim() || !password) {
+          throw new Error("Please enter both email and password.");
+        }
+
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3004/api";
-        const res = await fetch(`${baseUrl}/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
         
-        const data = await res.json();
-        
-        if (!res.ok) {
-          const errorMsg = Array.isArray(data.message) ? data.message.join(", ") : data.message;
-          throw new Error(errorMsg || "Failed to login");
+        let res: Response;
+        try {
+          res = await fetch(`${baseUrl}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email.trim(), password }),
+          });
+        } catch (netErr: any) {
+          throw new Error("Unable to connect to server. Please check your internet or API tunnel.");
         }
         
-        const user = data.data?.user || data.user;
-        const tokens = data.data?.tokens || data.tokens;
+        let data: any = null;
+        try {
+          const text = await res.text();
+          data = text ? JSON.parse(text) : null;
+        } catch {
+          data = null;
+        }
         
+        if (!res.ok) {
+          let errorMsg = "";
+          if (data) {
+            if (Array.isArray(data.message)) {
+              errorMsg = data.message.join(", ");
+            } else if (typeof data.message === "string") {
+              errorMsg = data.message;
+            } else if (typeof data.error === "string") {
+              errorMsg = data.error;
+            }
+          }
+
+          if (!errorMsg) {
+            if (res.status === 401) {
+              errorMsg = "Invalid email or password.";
+            } else if (res.status === 404) {
+              errorMsg = "Login endpoint not found (404). Check API server status.";
+            } else if (res.status === 500) {
+              errorMsg = "Internal server error (500). Please try again later.";
+            } else {
+              errorMsg = `Server error (${res.status}): ${res.statusText || "Failed to login"}`;
+            }
+          }
+          throw new Error(errorMsg);
+        }
+        
+        const user = data?.data?.user || data?.user;
+        const tokens = data?.data?.tokens || data?.tokens;
+        
+        if (!user || !tokens?.accessToken) {
+          throw new Error("Invalid response received from authentication server.");
+        }
+
         if (user?.role !== "ADMIN") {
           throw new Error("Access denied. Only Admins can access the dashboard.");
         }
-        
+
         localStorage.setItem("dashboard_access_token", tokens.accessToken);
+        localStorage.setItem("dashboard_refresh_token", tokens.refreshToken);
         localStorage.setItem("dashboard_user", JSON.stringify(user));
         
-        router.push("/dashboard");
+        toast.success(`Welcome back, ${user.fullName || user.email}! Login successful.`, {
+          title: "Login Successful",
+        });
+
+        setTimeout(() => {
+          router.push("/dashboard");
+        }, 600);
       } catch (error: any) {
-        setNotice(error.message || "An error occurred during login.");
+        const errorMsg = error?.message || "An error occurred during login.";
+        setNotice(errorMsg);
+        toast.error(errorMsg, { title: "Login Failed" });
       } finally {
         setLoading(false);
       }
