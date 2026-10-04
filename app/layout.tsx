@@ -7,6 +7,11 @@ import { Toaster } from "@/components/Toast";
 export const metadata: Metadata = {
   title: "CityDeals | Admin Dashboard",
   description: "Manage CityDeals businesses, coupons, locations and redemptions.",
+  icons: {
+    icon: "/assets/icon.png",
+    shortcut: "/assets/icon.png",
+    apple: "/assets/icon.png",
+  },
 };
 
 export default function RootLayout({

@@ -17,118 +17,18 @@ interface AppUser {
   status: "Active" | "Suspended" | "Banned";
 }
 
-const initialUsers: AppUser[] = [
-  {
-    id: "1",
-    name: "Shuvo",
-    email: "example@gmail.com",
-    phone: "151-111-9991",
-    joined: "5 Aug 2026",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "2",
-    name: "Anika",
-    email: "anika@mail.com",
-    phone: "172-222-3344",
-    joined: "20 Sep 2026",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "3",
-    name: "Shuvo",
-    email: "example@gmail.com",
-    phone: "151-111-9991",
-    joined: "16 Aug 2026",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "4",
-    name: "Ravi",
-    email: "ravi123@domain.net",
-    phone: "183-333-4455",
-    joined: "02 Oct 2026",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "5",
-    name: "Leila",
-    email: "leila@example.org",
-    phone: "194-444-5566",
-    joined: "15 Nov 2026",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "6",
-    name: "Jamal",
-    email: "jamal@mailservice.com",
-    phone: "205-555-6677",
-    joined: "23 Dec 2026",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "7",
-    name: "Maya",
-    email: "maya@workmail.com",
-    phone: "216-666-7788",
-    joined: "10 Jan 2027",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "8",
-    name: "Omar",
-    email: "omar2027@mail.co",
-    phone: "227-777-8899",
-    joined: "28 Feb 2027",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "9",
-    name: "Sofia",
-    email: "sofia@inbox.net",
-    phone: "238-888-9900",
-    joined: "05 Mar 2027",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "10",
-    name: "Ethan",
-    email: "ethan.email@provider.c...",
-    phone: "249-999-1010",
-    joined: "18 Apr 2027",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-  {
-    id: "11",
-    name: "Nina",
-    email: "nina_contact@mail.org",
-    phone: "260-000-2121",
-    joined: "30 May 2027",
-    saved: 12,
-    redeemed: 5,
-    status: "Active",
-  },
-];
+interface ApiUserRecord {
+  id: string;
+  fullName?: string;
+  email?: string;
+  phoneNumber?: string;
+  createdAt: string | Date;
+  status: string;
+  _count?: {
+    savedCoupons?: number;
+    couponRedemptions?: number;
+  };
+}
 
 export default function UsersPage() {
   const queryClient = useQueryClient();
@@ -136,12 +36,12 @@ export default function UsersPage() {
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const { data: users = [], isLoading: loading } = useQuery({
+  const { data: users = [] } = useQuery({
     queryKey: ['users'],
     queryFn: async () => {
       const data = await apiClient.get('/admin/users');
       if (!Array.isArray(data)) return [];
-      return data.map((u: any): AppUser => ({
+      return data.map((u: ApiUserRecord): AppUser => ({
         id: u.id,
         name: u.fullName || "Unknown",
         email: u.email || "",
@@ -174,11 +74,11 @@ export default function UsersPage() {
       
       return { previousUsers };
     },
-    onError: (err: any, variables, context) => {
+    onError: (err: unknown, _variables, context) => {
       if (context?.previousUsers) {
         queryClient.setQueryData(['users'], context.previousUsers);
       }
-      const errMsg = err?.response?.data?.message || "Failed to update status";
+      const errMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update status";
       toast.error(errMsg, { title: "Update Failed" });
       console.error("Failed to update status:", err);
     },

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { toast } from '@/components/Toast';
 
-const baseURL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3004/api";
+const baseURL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:5000/api";
 
 export const apiClient = axios.create({
   baseURL,
@@ -21,9 +21,12 @@ apiClient.interceptors.request.use((config) => {
 });
 
 let isRefreshing = false;
-let failedQueue: any[] = [];
+let failedQueue: Array<{
+  resolve: (value: unknown) => void;
+  reject: (reason?: unknown) => void;
+}> = [];
 
-const processQueue = (error: any, token: string | null = null) => {
+const processQueue = (error: unknown, token: string | null = null) => {
   failedQueue.forEach(prom => {
     if (error) {
       prom.reject(error);

@@ -8,53 +8,282 @@ import { toast } from "@/components/Toast";
 
 export default function Home() {
   const router = useRouter();
-  const [step, setStep] = useState<"signin" | "email" | "otp">("signin");
+  const [step, setStep] = useState<"signin" | "email" | "otp" | "reset">("signin");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
   const [emailError, setEmailError] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
+  const [otpError, setOtpError] = useState(false);
+  const [newPasswordError, setNewPasswordError] = useState(false);
+  const [confirmPasswordError, setConfirmPasswordError] = useState(false);
+  const [newPasswordErrorMsg, setNewPasswordErrorMsg] = useState("");
+  const [confirmPasswordErrorMsg, setConfirmPasswordErrorMsg] = useState("");
 
-  function changeStep(next: "signin" | "email" | "otp") {
-    setStep(next);
-    setNotice("");
-    setOtp("");
-    setEmailError(false);
-    setPasswordError(false);
-  }
   const [visible, setVisible] = useState(false);
+  const [resetVisible, setResetVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:5000/api";
+
+  function changeStep(next: "signin" | "email" | "otp" | "reset") {
+    setStep(next);
+    setNotice("");
+    setEmailError(false);
+    setPasswordError(false);
+    setOtpError(false);
+    setNewPasswordError(false);
+    setConfirmPasswordError(false);
+    setNewPasswordErrorMsg("");
+    setConfirmPasswordErrorMsg("");
+
+    if (next === "signin") {
+      setOtp("");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+  }
+
+  interface ApiAuthResponse {
+    message?: string | string[];
+    error?: string;
+    data?: {
+      otp?: string;
+      user?: { id: string; email: string; fullName?: string; role: string };
+      tokens?: { accessToken: string; refreshToken: string };
+    };
+    otp?: string;
+    user?: { id: string; email: string; fullName?: string; role: string };
+    tokens?: { accessToken: string; refreshToken: string };
+  }
+
+  function getErrorMessage(res: Response, data: ApiAuthResponse | null, defaultMsg: string): string {
+    if (data) {
+      if (Array.isArray(data.message)) {
+        return data.message.join(", ");
+      } else if (typeof data.message === "string") {
+        return data.message;
+      } else if (typeof data.error === "string") {
+        return data.error;
+      }
+    }
+    if (res.status === 401) return "Invalid email or password.";
+    if (res.status === 404) return "Account not found with this email.";
+    if (res.status === 500) return "Internal server error. Please try again later.";
+    return defaultMsg;
+  }
+
+  async function handleResendCode() {
+    if (!email.trim() || resending) return;
+    setResending(true);
+    setNotice("");
+
+    try {
+      const res = await fetch(`${baseUrl}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+
+      const data: ApiAuthResponse | null = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(getErrorMessage(res, data, "Failed to resend code"));
+      }
+
+      toast.success(`A new verification code was sent to ${email.trim()}`, { title: "Code Resent" });
+      const devOtp = data?.data?.otp || data?.otp;
+      if (devOtp) {
+        toast.info(`Dev Code: ${devOtp}`, { title: "OTP Received" });
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Failed to resend verification code";
+      toast.error(errorMsg, { title: "Error" });
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    // 1. STEP: EMAIL (Request Forgot Password OTP)
     if (step === "email") {
-      if (!email.trim()) {
+      const trimmedEmail = email.trim();
+      if (!trimmedEmail) {
         setEmailError(true);
         toast.error("Please enter a valid email address.", { title: "Email Required" });
         return;
       }
       setEmailError(false);
-      toast.info(`Verification code sent to ${email}`, { title: "Code Sent" });
-      changeStep("otp");
+      setLoading(true);
+      setNotice("");
+
+      try {
+        let res: Response;
+        try {
+          res = await fetch(`${baseUrl}/auth/forgot-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: trimmedEmail }),
+          });
+        } catch {
+          throw new Error("Unable to connect to server. Please check your network or API status.");
+        }
+
+        const data: ApiAuthResponse | null = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(getErrorMessage(res, data, "Failed to send reset code"));
+        }
+
+        toast.success(`Verification code sent to ${trimmedEmail}`, { title: "Code Sent" });
+        const devOtp = data?.data?.otp || data?.otp;
+        if (devOtp) {
+          toast.info(`Dev Code: ${devOtp}`, { title: "OTP Received" });
+        }
+
+        changeStep("otp");
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "Failed to send verification code.";
+        setNotice(errorMsg);
+        toast.error(errorMsg, { title: "Request Failed" });
+      } finally {
+        setLoading(false);
+      }
       return;
     }
+
+    // 2. STEP: OTP (Verify Verification Code)
     if (step === "otp") {
-      if (otp !== "123456") {
-        const errorMsg = "Incorrect demo code. Enter 123456 to continue.";
+      const trimmedOtp = otp.trim();
+      if (trimmedOtp.length !== 6) {
+        setOtpError(true);
+        const errorMsg = "Please enter the complete 6-digit verification code.";
         setNotice(errorMsg);
-        toast.error(errorMsg, { title: "Verification Failed" });
+        toast.error(errorMsg, { title: "Invalid Code" });
         return;
       }
+      setOtpError(false);
       setLoading(true);
-      toast.success("Verification successful! Redirecting...", { title: "Success" });
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 600);
+      setNotice("");
+
+      try {
+        let res: Response;
+        try {
+          res = await fetch(`${baseUrl}/auth/verify-otp`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email.trim(), otp: trimmedOtp }),
+          });
+        } catch {
+          throw new Error("Unable to connect to server. Please check your network or API status.");
+        }
+
+        const data: ApiAuthResponse | null = await res.json().catch(() => null);
+        if (!res.ok) {
+          setOtpError(true);
+          throw new Error(getErrorMessage(res, data, "Invalid verification code"));
+        }
+
+        toast.success("Verification code verified! Create your new password.", { title: "Verified" });
+        changeStep("reset");
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "Invalid or expired verification code.";
+        setNotice(errorMsg);
+        toast.error(errorMsg, { title: "Verification Failed" });
+      } finally {
+        setLoading(false);
+      }
       return;
     }
+
+    // 3. STEP: RESET (Set New Password)
+    if (step === "reset") {
+      let hasError = false;
+      if (!newPassword || newPassword.length < 6) {
+        setNewPasswordError(true);
+        setNewPasswordErrorMsg(newPassword ? "Password must be at least 6 characters" : "New password is required");
+        hasError = true;
+      } else {
+        setNewPasswordError(false);
+        setNewPasswordErrorMsg("");
+      }
+
+      if (!confirmPassword) {
+        setConfirmPasswordError(true);
+        setConfirmPasswordErrorMsg("Confirm password is required");
+        hasError = true;
+      } else if (newPassword && newPassword !== confirmPassword) {
+        setConfirmPasswordError(true);
+        setConfirmPasswordErrorMsg("Passwords do not match");
+        hasError = true;
+      } else {
+        setConfirmPasswordError(false);
+        setConfirmPasswordErrorMsg("");
+      }
+
+      if (hasError) {
+        if (!newPassword && !confirmPassword) {
+          toast.error("Please enter both password fields.", { title: "Fields Required" });
+        } else if (newPassword && confirmPassword && newPassword !== confirmPassword) {
+          toast.error("New password and confirm password do not match.", { title: "Password Mismatch" });
+        } else if (newPassword && newPassword.length < 6) {
+          toast.error("Password must be at least 6 characters long.", { title: "Password Too Short" });
+        } else {
+          toast.error("Please fill in the required password fields.", { title: "Password Required" });
+        }
+        return;
+      }
+
+      setLoading(true);
+      setNotice("");
+
+      try {
+        let res: Response;
+        try {
+          res = await fetch(`${baseUrl}/auth/reset-password`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: email.trim(),
+              otp: otp.trim(),
+              newPassword,
+              confirmPassword,
+            }),
+          });
+        } catch {
+          throw new Error("Unable to connect to server. Please check your network or API status.");
+        }
+
+        const data: ApiAuthResponse | null = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(getErrorMessage(res, data, "Failed to reset password"));
+        }
+
+        toast.success("Password reset successfully! You can now sign in with your new password.", {
+          title: "Password Reset Successful",
+        });
+
+        setPassword("");
+        changeStep("signin");
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "Failed to reset password.";
+        setNotice(errorMsg);
+        toast.error(errorMsg, { title: "Reset Failed" });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // 4. STEP: SIGNIN
     if (step === "signin") {
-      const formData = new FormData(event.currentTarget);
-      const password = (formData.get("password") as string) || "";
       const trimmedEmail = email.trim();
 
       let hasError = false;
@@ -85,59 +314,34 @@ export default function Home() {
 
       setLoading(true);
       setNotice("");
-      
-      try {
 
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3004/api";
-        
+      try {
         let res: Response;
         try {
           res = await fetch(`${baseUrl}/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email.trim(), password }),
+            body: JSON.stringify({ email: trimmedEmail, password }),
           });
-        } catch (netErr: any) {
+        } catch {
           throw new Error("Unable to connect to server. Please check your internet or API tunnel.");
         }
-        
-        let data: any = null;
+
+        let data: ApiAuthResponse | null = null;
         try {
           const text = await res.text();
           data = text ? JSON.parse(text) : null;
         } catch {
           data = null;
         }
-        
-        if (!res.ok) {
-          let errorMsg = "";
-          if (data) {
-            if (Array.isArray(data.message)) {
-              errorMsg = data.message.join(", ");
-            } else if (typeof data.message === "string") {
-              errorMsg = data.message;
-            } else if (typeof data.error === "string") {
-              errorMsg = data.error;
-            }
-          }
 
-          if (!errorMsg) {
-            if (res.status === 401) {
-              errorMsg = "Invalid email or password.";
-            } else if (res.status === 404) {
-              errorMsg = "Login endpoint not found (404). Check API server status.";
-            } else if (res.status === 500) {
-              errorMsg = "Internal server error (500). Please try again later.";
-            } else {
-              errorMsg = `Server error (${res.status}): ${res.statusText || "Failed to login"}`;
-            }
-          }
-          throw new Error(errorMsg);
+        if (!res.ok) {
+          throw new Error(getErrorMessage(res, data, `Server error (${res.status}): ${res.statusText || "Failed to login"}`));
         }
-        
+
         const user = data?.data?.user || data?.user;
         const tokens = data?.data?.tokens || data?.tokens;
-        
+
         if (!user || !tokens?.accessToken) {
           throw new Error("Invalid response received from authentication server.");
         }
@@ -149,7 +353,7 @@ export default function Home() {
         localStorage.setItem("dashboard_access_token", tokens.accessToken);
         localStorage.setItem("dashboard_refresh_token", tokens.refreshToken);
         localStorage.setItem("dashboard_user", JSON.stringify(user));
-        
+
         toast.success(`Welcome back, ${user.fullName || user.email}! Login successful.`, {
           title: "Login Successful",
         });
@@ -157,8 +361,8 @@ export default function Home() {
         setTimeout(() => {
           router.push("/dashboard");
         }, 600);
-      } catch (error: any) {
-        const errorMsg = error?.message || "An error occurred during login.";
+      } catch (error: unknown) {
+        const errorMsg = error instanceof Error ? error.message : "An error occurred during login.";
         setNotice(errorMsg);
         toast.error(errorMsg, { title: "Login Failed" });
       } finally {
@@ -167,6 +371,7 @@ export default function Home() {
       return;
     }
   }
+
   return (
     <main className="sign-in-page">
       <section className="sign-in-layout" aria-labelledby="sign-in-title">
@@ -185,34 +390,233 @@ export default function Home() {
           <form className="sign-in-form" onSubmit={submit} key={step}>
             <header className="form-header">
               <Image className="brand-logo" src="/assets/logo.svg" alt="CityDeals" width={263} height={76} priority />
-              <h1 id="sign-in-title">{step === "signin" ? "Sign In to Your Admin Panel" : step === "email" ? "Forgot Password?" : "Verify Your Email"}</h1>
-              <p>{step === "signin" ? "Log in to manage businesses, coupons, Location and Redemptions." : step === "email" ? "Enter your email address to continue with account recovery." : <>Enter the six-digit code for <strong className="recovery-email">{email}</strong>.</>}</p>
+              <h1 id="sign-in-title">
+                {step === "signin"
+                  ? "Sign In to Your Admin Panel"
+                  : step === "email"
+                  ? "Forgot Password?"
+                  : step === "otp"
+                  ? "Verify Your Email"
+                  : "Reset Your Password"}
+              </h1>
+              <p>
+                {step === "signin" ? (
+                  "Log in to manage businesses, coupons, Location and Redemptions."
+                ) : step === "email" ? (
+                  "Enter your email address to continue with account recovery."
+                ) : step === "otp" ? (
+                  <>Enter the six-digit code sent to <strong className="recovery-email">{email}</strong>.</>
+                ) : (
+                  <>Create a new secure password for <strong className="recovery-email">{email}</strong>.</>
+                )}
+              </p>
             </header>
             <div className="form-fields">
-              {step !== "otp" && <div className="field-group">
-                <label htmlFor="email">Email <span>*</span></label>
-                <div className={`input-shell ${emailError ? "!border-rose-500 bg-rose-50/20" : ""}`}><Image src="/assets/email.svg" alt="" width={22} height={22} /><input id="email" name="email" type="email" autoComplete="username" placeholder="Example@gmail.com" value={email} onChange={(event) => { setEmail(event.target.value); if (emailError) setEmailError(false); }} autoFocus={step === "email"} required /></div>
-                {emailError && <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">Email is required</span>}
-              </div>}
-              {step === "signin" && <div className="field-group">
-                <label htmlFor="password">Password <span>*</span></label>
-                <div className={`input-shell ${passwordError ? "!border-rose-500 bg-rose-50/20" : ""}`}><Image src="/assets/lock.svg" alt="" width={22} height={22} /><input id="password" name="password" type={visible ? "text" : "password"} autoComplete="current-password" placeholder="********" onChange={() => { if (passwordError) setPasswordError(false); }} required /><button className="password-toggle" type="button" aria-label={visible ? "Hide password" : "Show password"} aria-pressed={visible} onClick={() => setVisible(!visible)}><Image src="/assets/eye-slash.svg" alt="" width={22} height={22} /></button></div>
-                {passwordError && <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">Password is required</span>}
-                <button className="forgot-password" type="button" onClick={() => changeStep("email")}>Forgot Password?</button>
-              </div>}
-              {step === "otp" && <div className="field-group">
-                <label htmlFor="otp">Verification code <span>*</span></label>
-                <div className="input-shell"><input className="otp-input" id="otp" name="otp" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} placeholder="000000" value={otp} onChange={(event) => { setOtp(event.target.value.replace(/\D/g, "").slice(0, 6)); setNotice(""); }} aria-describedby="demo-help" aria-invalid={!!notice} autoFocus required /></div>
-                <button className="forgot-password" type="button" onClick={() => changeStep("email")}>Change email</button>
-              </div>}
+              {(step === "signin" || step === "email") && (
+                <div className="field-group">
+                  <label htmlFor="email">Email <span>*</span></label>
+                  <div className={`input-shell ${emailError ? "!border-rose-500 bg-rose-50/20" : ""}`}>
+                    <Image src="/assets/email.svg" alt="" width={22} height={22} />
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="username"
+                      placeholder="Example@gmail.com"
+                      value={email}
+                      onChange={(event) => {
+                        setEmail(event.target.value);
+                        if (emailError) setEmailError(false);
+                      }}
+                      autoFocus={step === "email"}
+                      required
+                    />
+                  </div>
+                  {emailError && <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">Email is required</span>}
+                </div>
+              )}
+
+              {step === "signin" && (
+                <div className="field-group">
+                  <label htmlFor="password">Password <span>*</span></label>
+                  <div className={`input-shell ${passwordError ? "!border-rose-500 bg-rose-50/20" : ""}`}>
+                    <Image src="/assets/lock.svg" alt="" width={22} height={22} />
+                    <input
+                      id="password"
+                      name="password"
+                      type={visible ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="********"
+                      value={password}
+                      onChange={(event) => {
+                        setPassword(event.target.value);
+                        if (passwordError) setPasswordError(false);
+                      }}
+                      required
+                    />
+                    <button
+                      className="password-toggle"
+                      type="button"
+                      aria-label={visible ? "Hide password" : "Show password"}
+                      aria-pressed={visible}
+                      onClick={() => setVisible(!visible)}
+                    >
+                      <Image src="/assets/eye-slash.svg" alt="" width={22} height={22} />
+                    </button>
+                  </div>
+                  {passwordError && <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">Password is required</span>}
+                  <button className="forgot-password" type="button" onClick={() => changeStep("email")}>Forgot Password?</button>
+                </div>
+              )}
+
+              {step === "otp" && (
+                <div className="field-group">
+                  <label htmlFor="otp">Verification code <span>*</span></label>
+                  <div className={`input-shell ${otpError ? "!border-rose-500 bg-rose-50/20" : ""}`}>
+                    <input
+                      className="otp-input"
+                      id="otp"
+                      name="otp"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={otp}
+                      onChange={(event) => {
+                        setOtp(event.target.value.replace(/\D/g, "").slice(0, 6));
+                        setNotice("");
+                        if (otpError) setOtpError(false);
+                      }}
+                      aria-describedby="demo-help"
+                      aria-invalid={!!notice || otpError}
+                      autoFocus
+                      required
+                    />
+                  </div>
+                  <div className="flex items-center justify-between w-full mt-1">
+                    <button className="forgot-password" type="button" onClick={() => changeStep("email")}>
+                      Change email
+                    </button>
+                    <button
+                      className="forgot-password"
+                      type="button"
+                      disabled={resending}
+                      onClick={handleResendCode}
+                    >
+                      {resending ? "Resending..." : "Resend code"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {step === "reset" && (
+                <>
+                  <div className="field-group">
+                    <label htmlFor="newPassword">New Password <span>*</span></label>
+                    <div className={`input-shell ${newPasswordError ? "!border-rose-500 bg-rose-50/20" : ""}`}>
+                      <Image src="/assets/lock.svg" alt="" width={22} height={22} />
+                      <input
+                        id="newPassword"
+                        name="newPassword"
+                        type={resetVisible ? "text" : "password"}
+                        autoComplete="new-password"
+                        placeholder="At least 6 characters"
+                        value={newPassword}
+                        onChange={(e) => {
+                          setNewPassword(e.target.value);
+                          if (newPasswordError) setNewPasswordError(false);
+                        }}
+                        autoFocus
+                        required
+                      />
+                      <button
+                        className="password-toggle"
+                        type="button"
+                        aria-label={resetVisible ? "Hide password" : "Show password"}
+                        aria-pressed={resetVisible}
+                        onClick={() => setResetVisible(!resetVisible)}
+                      >
+                        <Image src="/assets/eye-slash.svg" alt="" width={22} height={22} />
+                      </button>
+                    </div>
+                    {newPasswordError && (
+                      <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">
+                        {newPasswordErrorMsg || "New password is required"}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="field-group">
+                    <label htmlFor="confirmPassword">Confirm Password <span>*</span></label>
+                    <div className={`input-shell ${confirmPasswordError ? "!border-rose-500 bg-rose-50/20" : ""}`}>
+                      <Image src="/assets/lock.svg" alt="" width={22} height={22} />
+                      <input
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        type={confirmVisible ? "text" : "password"}
+                        autoComplete="new-password"
+                        placeholder="Re-enter new password"
+                        value={confirmPassword}
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value);
+                          if (confirmPasswordError) setConfirmPasswordError(false);
+                        }}
+                        required
+                      />
+                      <button
+                        className="password-toggle"
+                        type="button"
+                        aria-label={confirmVisible ? "Hide password" : "Show password"}
+                        aria-pressed={confirmVisible}
+                        onClick={() => setConfirmVisible(!confirmVisible)}
+                      >
+                        <Image src="/assets/eye-slash.svg" alt="" width={22} height={22} />
+                      </button>
+                    </div>
+                    {confirmPasswordError && (
+                      <span className="text-xs text-rose-500 font-medium -mt-1 ml-1">
+                        {confirmPasswordErrorMsg || "Please confirm your password"}
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
+
             <button className="primary-button" type="submit" disabled={loading}>
-              {loading ? "Signing in..." : step === "signin" ? "Sign in" : step === "email" ? "Send code" : "Verify"}
+              {loading
+                ? step === "signin"
+                  ? "Signing in..."
+                  : step === "email"
+                  ? "Sending code..."
+                  : step === "otp"
+                  ? "Verifying code..."
+                  : "Resetting password..."
+                : step === "signin"
+                ? "Sign in"
+                : step === "email"
+                ? "Send code"
+                : step === "otp"
+                ? "Verify code"
+                : "Reset Password"}
             </button>
-            {step !== "signin" && <div className="recovery-footer">
-              <p id="demo-help" className="demo-help">{step === "email" ? "Demo preview: no email will be sent." : "Demo preview: use 123456. This does not authenticate an account."}</p>
-              <button className="forgot-password" type="button" onClick={() => changeStep("signin")}>Back to sign in</button>
-            </div>}
+
+            {step !== "signin" && (
+              <div className="recovery-footer">
+                <p id="demo-help" className="demo-help">
+                  {step === "email"
+                    ? "Enter your registered email address to receive a recovery code."
+                    : step === "otp"
+                    ? "Check your inbox for the 6-digit verification code."
+                    : "Password must be at least 6 characters long."}
+                </p>
+                <button className="forgot-password" type="button" onClick={() => changeStep("signin")}>
+                  Back to sign in
+                </button>
+              </div>
+            )}
             {notice && <p className="form-notice" role="status">{notice}</p>}
           </form>
         </div>
