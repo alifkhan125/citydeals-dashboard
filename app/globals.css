@@ -58,3 +58,19 @@ h1 { margin: 0; font-size: 30px; font-weight: 400; line-height: 40px; }
  h1 { font-size: 25px; line-height: 34px; }
  .form-header p { font-size: 16px; line-height: 25px; }
 }
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: toastSlideIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

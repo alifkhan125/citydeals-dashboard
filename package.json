@@ -10,7 +10,8 @@
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
-      "core-js"
+      "core-js",
+      "unrs-resolver"
     ]
   },
   "dependencies": {
