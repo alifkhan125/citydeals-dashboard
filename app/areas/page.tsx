@@ -1,93 +1,90 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Modal from "@/components/Modal";
+import { apiClient } from "@/api/client";
 
-const areas = [
-  { name: "Kendall", slug: "kendall", city: "Kendall", state: "FL", merchants: 18, coupons: 42, qr: "Ready" },
-  { name: "Miami Lakes", slug: "miami-lakes", city: "Miami Lakes", state: "FL", merchants: 12, coupons: 28, qr: "Ready" },
-  { name: "Sarasota", slug: "sarasota", city: "Sarasota", state: "FL", merchants: 9, coupons: 21, qr: "Draft" },
-];
+export interface AreaItem {
+  id: string;
+  name: string;
+  slug: string;
+  city: string;
+  state: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  radiusMeters?: number;
+  qrCodeUrl?: string | null;
+  _count?: {
+    merchants: number;
+    coupons: number;
+  };
+}
 
 export default function AreasPage() {
-  const [areaList, setAreaList] = useState(areas);
+  const [areaList, setAreaList] = useState<AreaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [isAddAreaOpen, setIsAddAreaOpen] = useState(false);
+  const [editingArea, setEditingArea] = useState<AreaItem | null>(null);
+  const [openActionSlug, setOpenActionSlug] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Form states (clean and simple: name, slug, city, state)
   const [areaName, setAreaName] = useState("");
   const [areaSlug, setAreaSlug] = useState("");
   const [city, setCity] = useState("");
-  const [state, setState] = useState("FL");
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [editingAreaSlug, setEditingAreaSlug] = useState<string | null>(null);
-  const [openActionSlug, setOpenActionSlug] = useState<string | null>(null);
+  const [state, setState] = useState("Madrid");
+
+  async function fetchAreas() {
+    try {
+      setLoading(true);
+      const data = await apiClient.get("/areas");
+      if (Array.isArray(data)) {
+        setAreaList(data as AreaItem[]);
+      }
+    } catch (err: unknown) {
+      console.error("Failed to load areas:", err);
+      showToast("Failed to load areas from server");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchAreas();
+  }, []);
+
+  function showToast(message: string) {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 2500);
+  }
 
   const handleAreaNameChange = (value: string) => {
     setAreaName(value);
-    setAreaSlug(
-      value
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-    );
-  };
-
-  const handleAddArea = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!areaName.trim() || !areaSlug.trim() || !city.trim() || !state.trim()) return;
-
-    if (editingAreaSlug) {
-      setAreaList((prev) =>
-        prev.map((area) =>
-          area.slug === editingAreaSlug
-            ? {
-                ...area,
-                name: areaName.trim(),
-                slug: areaSlug.trim(),
-                city: city.trim(),
-                state: state.trim().toUpperCase(),
-              }
-            : area
-        )
+    if (!editingArea && !areaSlug) {
+      setAreaSlug(
+        value
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
       );
-      setIsAddAreaOpen(false);
-      setEditingAreaSlug(null);
-      setToastMessage(`Updated ${areaName.trim()} area`);
-      setTimeout(() => setToastMessage(null), 2500);
-      return;
     }
-
-    const nextArea = {
-      name: areaName.trim(),
-      slug: areaSlug.trim(),
-      city: city.trim(),
-      state: state.trim().toUpperCase(),
-      merchants: 0,
-      coupons: 0,
-      qr: "Draft",
-    };
-
-    setAreaList((prev) => [nextArea, ...prev]);
-    setAreaName("");
-    setAreaSlug("");
-    setCity("");
-    setState("FL");
-    setIsAddAreaOpen(false);
-    setToastMessage(`Added ${nextArea.name} area`);
-    setTimeout(() => setToastMessage(null), 2500);
   };
 
-  const handleCloseAreaModal = () => {
-    setIsAddAreaOpen(false);
-    setEditingAreaSlug(null);
-    setAreaName("");
-    setAreaSlug("");
-    setCity("");
-    setState("FL");
-  };
-
-  const handleEditArea = (area: (typeof areas)[number]) => {
+  const handleOpenAddArea = () => {
     setOpenActionSlug(null);
-    setEditingAreaSlug(area.slug);
+    setEditingArea(null);
+    setAreaName("");
+    setAreaSlug("");
+    setCity("");
+    setState("Madrid");
+    setIsAddAreaOpen(true);
+  };
+
+  const handleEditArea = (area: AreaItem) => {
+    setOpenActionSlug(null);
+    setEditingArea(area);
     setAreaName(area.name);
     setAreaSlug(area.slug);
     setCity(area.city);
@@ -95,31 +92,73 @@ export default function AreasPage() {
     setIsAddAreaOpen(true);
   };
 
-  const handleToggleAreaStatus = (slug: string) => {
-    setOpenActionSlug(null);
-    setAreaList((prev) =>
-      prev.map((area) =>
-        area.slug === slug ? { ...area, qr: area.qr === "Ready" ? "Draft" : "Ready" } : area
-      )
-    );
+  const handleCloseAreaModal = () => {
+    setIsAddAreaOpen(false);
+    setEditingArea(null);
+    setAreaName("");
+    setAreaSlug("");
+    setCity("");
+    setState("Madrid");
+  };
 
-    const area = areaList.find((item) => item.slug === slug);
-    if (area) {
-      setToastMessage(`${area.name} ${area.qr === "Ready" ? "unpublished" : "published"}`);
-      setTimeout(() => setToastMessage(null), 2500);
+  const handleSaveArea = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!areaName.trim() || !city.trim()) {
+      showToast("Area name and City are required");
+      return;
+    }
+
+    const slug =
+      areaSlug.trim() ||
+      areaName
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+
+    const payload = {
+      name: areaName.trim(),
+      slug,
+      city: city.trim(),
+      state: state.trim().toUpperCase(),
+    };
+
+    try {
+      setSaving(true);
+      if (editingArea) {
+        await apiClient.patch(`/areas/${editingArea.id}`, payload);
+        showToast(`Updated ${areaName.trim()} area`);
+      } else {
+        await apiClient.post("/areas", payload);
+        showToast(`Added ${areaName.trim()} area`);
+      }
+
+      handleCloseAreaModal();
+      await fetchAreas();
+    } catch (err: any) {
+      console.error("Failed to save area:", err);
+      const serverMsg = err.response?.data?.message || err.message || "Failed to save area";
+      showToast(Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDeleteArea = (slug: string) => {
+  const handleDeleteArea = async (area: AreaItem) => {
     setOpenActionSlug(null);
-    const area = areaList.find((item) => item.slug === slug);
-    setAreaList((prev) => prev.filter((item) => item.slug !== slug));
-
-    if (area) {
-      setToastMessage(`Deleted ${area.name} area`);
-      setTimeout(() => setToastMessage(null), 2500);
+    if (!confirm(`Are you sure you want to delete ${area.name}?`)) return;
+    try {
+      await apiClient.delete(`/areas/${area.id}`);
+      showToast(`Deleted ${area.name} area`);
+      await fetchAreas();
+    } catch (err: unknown) {
+      console.error("Failed to delete area:", err);
+      showToast("Failed to delete area");
     }
   };
+
+  const totalMerchants = areaList.reduce((sum, a) => sum + (a._count?.merchants || 0), 0);
+  const totalCoupons = areaList.reduce((sum, a) => sum + (a._count?.coupons || 0), 0);
 
   return (
     <div className="w-full px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
@@ -127,204 +166,213 @@ export default function AreasPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Areas / Directories</h1>
-            <p className="mt-1 text-sm text-slate-500">Manage isolated city directories, app landing links and area QR destinations.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Manage isolated city directories, app landing links and area QR destinations.
+            </p>
           </div>
           <button
             className="h-11 w-full rounded-xl bg-[#f97316] px-4 text-sm font-medium text-white transition-opacity hover:opacity-95 sm:w-auto"
             type="button"
-            onClick={() => {
-              setEditingAreaSlug(null);
-              setAreaName("");
-              setAreaSlug("");
-              setCity("");
-              setState("FL");
-              setIsAddAreaOpen(true);
-            }}
+            onClick={handleOpenAddArea}
           >
             Add area
           </button>
         </div>
 
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {[`Total areas: ${areaList.length}`, "Active directories: 2", "QR codes ready: 2"].map((item) => (
+          {[
+            `Total areas: ${areaList.length}`,
+            `Total merchants: ${totalMerchants}`,
+            `Total active coupons: ${totalCoupons}`,
+          ].map((item) => (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4" key={item}>
               <p className="text-sm font-medium text-slate-700">{item}</p>
             </div>
           ))}
         </div>
 
-        <div className="mt-5 grid gap-3 md:hidden">
-          {areaList.map((area) => (
-            <article className="rounded-2xl border border-slate-200 bg-white p-4" key={area.slug}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="truncate text-base font-semibold text-slate-900">{area.name}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{area.city}, {area.state}</p>
-                  <p className="mt-1 break-all text-xs text-slate-500">/directory/{area.slug}</p>
-                </div>
-                <div className="relative shrink-0">
-                  <button
-                    aria-expanded={openActionSlug === area.slug}
-                    aria-label={`Open actions for ${area.name}`}
-                    className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
-                    type="button"
-                    onClick={() =>
-                      setOpenActionSlug((currentSlug) =>
-                        currentSlug === area.slug ? null : area.slug
-                      )
-                    }
-                  >
-                    ⋮
-                  </button>
-                  {openActionSlug === area.slug && (
-                    <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
-                      <button
-                        className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
-                        type="button"
-                        onClick={() => handleEditArea(area)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
-                        type="button"
-                        onClick={() => handleToggleAreaStatus(area.slug)}
-                      >
-                        {area.qr === "Ready" ? "Unpublish" : "Publish"}
-                      </button>
-                      <button
-                        className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
-                        type="button"
-                        onClick={() => handleDeleteArea(area.slug)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <span className="block text-xs text-slate-500">Merchants</span>
-                  <strong className="text-slate-900">{area.merchants}</strong>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <span className="block text-xs text-slate-500">Coupons</span>
-                  <strong className="text-slate-900">{area.coupons}</strong>
-                </div>
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <span className="block text-xs text-slate-500">QR</span>
-                  <strong
-                    className={
-                      area.qr === "Ready"
-                        ? "text-xs font-semibold text-emerald-700"
-                        : "text-xs font-semibold text-slate-600"
-                    }
-                  >
-                    {area.qr}
-                  </strong>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-
-        <div className="mt-5 hidden overflow-x-auto overflow-y-visible rounded-xl border border-slate-200 md:block">
-          <div className="grid grid-cols-[1.2fr_1fr_120px_120px_120px_90px] bg-slate-100 text-sm text-[#315576]">
-            {["Area", "Directory URL", "Merchants", "Coupons", "QR", "Actions"].map((h) => <div className="border-r border-slate-300 px-4 py-3 last:border-r-0" key={h}>{h}</div>)}
+        {loading ? (
+          <div className="flex h-48 items-center justify-center text-sm text-slate-500">
+            Loading areas from server...
           </div>
-          {areaList.map((area) => (
-            <div className="grid grid-cols-[1.2fr_1fr_120px_120px_120px_90px] border-t border-dashed border-slate-200 text-sm" key={area.slug}>
-              <div className="px-4 py-3"><strong>{area.name}</strong><p className="text-xs text-slate-500">{area.city}, {area.state}</p></div>
-              <div className="px-4 py-3 text-slate-700">/directory/{area.slug}</div>
-              <div className="px-4 py-3">{area.merchants}</div>
-              <div className="px-4 py-3">{area.coupons}</div>
-              <div className="px-4 py-3">
-                <span
-                  className={
-                    area.qr === "Ready"
-                      ? "rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-700"
-                      : "rounded bg-slate-100 px-2 py-1 text-xs text-slate-600"
-                  }
-                >
-                  {area.qr}
-                </span>
-              </div>
-              <div className="relative flex justify-center px-4 py-3">
-                <button
-                  aria-expanded={openActionSlug === area.slug}
-                  aria-label={`Open actions for ${area.name}`}
-                  className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
-                  type="button"
-                  onClick={() =>
-                    setOpenActionSlug((currentSlug) =>
-                      currentSlug === area.slug ? null : area.slug
-                    )
-                  }
-                >
-                  ⋮
-                </button>
-                {openActionSlug === area.slug && (
-                  <div className="absolute right-4 top-12 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
-                    <button
-                      className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
-                      type="button"
-                      onClick={() => handleEditArea(area)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
-                      type="button"
-                      onClick={() => handleToggleAreaStatus(area.slug)}
-                    >
-                      {area.qr === "Ready" ? "Unpublish" : "Publish"}
-                    </button>
-                    <button
-                      className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
-                      type="button"
-                      onClick={() => handleDeleteArea(area.slug)}
-                    >
-                      Delete
-                    </button>
+        ) : areaList.length === 0 ? (
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-slate-500">
+            <p className="text-sm">No areas found.</p>
+            <button
+              onClick={handleOpenAddArea}
+              className="text-sm font-medium text-orange-600 hover:underline"
+            >
+              + Add your first city area
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Mobile list */}
+            <div className="mt-5 grid gap-3 md:hidden">
+              {areaList.map((area) => (
+                <article className="rounded-2xl border border-slate-200 bg-white p-4" key={area.id || area.slug}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-base font-semibold text-slate-900">{area.name}</h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {area.city}, {area.state}
+                      </p>
+                      <p className="mt-1 break-all text-xs text-slate-500">/directory/{area.slug}</p>
+                    </div>
+                    <div className="relative shrink-0">
+                      <button
+                        aria-expanded={openActionSlug === area.slug}
+                        aria-label={`Open actions for ${area.name}`}
+                        className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
+                        type="button"
+                        onClick={() =>
+                          setOpenActionSlug((currentSlug) =>
+                            currentSlug === area.slug ? null : area.slug
+                          )
+                        }
+                      >
+                        ⋮
+                      </button>
+                      {openActionSlug === area.slug && (
+                        <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                          <button
+                            className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
+                            type="button"
+                            onClick={() => handleEditArea(area)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
+                            type="button"
+                            onClick={() => handleDeleteArea(area)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <span className="block text-xs text-slate-500">Merchants</span>
+                      <strong className="text-slate-900">{area._count?.merchants ?? 0}</strong>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <span className="block text-xs text-slate-500">Coupons</span>
+                      <strong className="text-slate-900">{area._count?.coupons ?? 0}</strong>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <span className="block text-xs text-slate-500">QR</span>
+                      <strong className="text-xs font-semibold text-emerald-700">
+                        {area.qrCodeUrl ? "Ready" : "Ready"}
+                      </strong>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
-          ))}
-        </div>
+
+            {/* Desktop table */}
+            <div className="mt-5 hidden overflow-x-auto overflow-y-visible rounded-xl border border-slate-200 md:block">
+              <div className="grid grid-cols-[1.2fr_1fr_120px_120px_120px_90px] bg-slate-100 text-sm text-[#315576]">
+                {["Area", "Directory URL", "Merchants", "Coupons", "QR", "Actions"].map((h) => (
+                  <div className="border-r border-slate-300 px-4 py-3 last:border-r-0" key={h}>
+                    {h}
+                  </div>
+                ))}
+              </div>
+              {areaList.map((area) => (
+                <div
+                  className="grid grid-cols-[1.2fr_1fr_120px_120px_120px_90px] border-t border-dashed border-slate-200 text-sm"
+                  key={area.id || area.slug}
+                >
+                  <div className="px-4 py-3">
+                    <strong>{area.name}</strong>
+                    <p className="text-xs text-slate-500">
+                      {area.city}, {area.state}
+                    </p>
+                  </div>
+                  <div className="px-4 py-3 text-slate-700">/directory/{area.slug}</div>
+                  <div className="px-4 py-3">{area._count?.merchants ?? 0}</div>
+                  <div className="px-4 py-3">{area._count?.coupons ?? 0}</div>
+                  <div className="px-4 py-3">
+                    <span className="rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-700">
+                      {area.qrCodeUrl ? "Ready" : "Ready"}
+                    </span>
+                  </div>
+                  <div className="relative flex justify-center px-4 py-3">
+                    <button
+                      aria-expanded={openActionSlug === area.slug}
+                      aria-label={`Open actions for ${area.name}`}
+                      className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
+                      type="button"
+                      onClick={() =>
+                        setOpenActionSlug((currentSlug) =>
+                          currentSlug === area.slug ? null : area.slug
+                        )
+                      }
+                    >
+                      ⋮
+                    </button>
+                    {openActionSlug === area.slug && (
+                      <div className="absolute right-4 top-12 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                        <button
+                          className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
+                          type="button"
+                          onClick={() => handleEditArea(area)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
+                          type="button"
+                          onClick={() => handleDeleteArea(area)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       <Modal
         isOpen={isAddAreaOpen}
         onClose={handleCloseAreaModal}
-        title={editingAreaSlug ? "Edit Area" : "Add Area"}
+        title={editingArea ? "Edit Area" : "Add Area"}
         subtitle={
-          editingAreaSlug
-            ? "Update this city directory"
+          editingArea
+            ? `Update ${editingArea.name} directory`
             : "Create a new city directory for the mobile app"
         }
-        maxWidth="max-w-[520px]"
+        maxWidth="max-w-[500px]"
       >
-        <form className="flex flex-col gap-4" onSubmit={handleAddArea}>
+        <form className="flex flex-col gap-4" onSubmit={handleSaveArea}>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
             <div className="grid gap-3.5">
               <label className="grid gap-1">
-                <span className="text-sm leading-5 text-slate-900">Area name</span>
+                <span className="text-sm leading-5 text-slate-900">Area name *</span>
                 <input
+                  required
                   className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
-                  placeholder="Kendall"
+                  placeholder="e.g. Kendall"
                   value={areaName}
                   onChange={(event) => handleAreaNameChange(event.target.value)}
                 />
               </label>
 
               <label className="grid gap-1">
-                <span className="text-sm leading-5 text-slate-900">Directory slug</span>
+                <span className="text-sm leading-5 text-slate-900">Directory slug *</span>
                 <input
+                  required
                   className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
-                  placeholder="kendall"
+                  placeholder="e.g. kendall"
                   value={areaSlug}
                   onChange={(event) => setAreaSlug(event.target.value)}
                 />
@@ -332,8 +380,9 @@ export default function AreasPage() {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="grid gap-1">
-                  <span className="text-sm leading-5 text-slate-900">City</span>
+                  <span className="text-sm leading-5 text-slate-900">City *</span>
                   <input
+                    required
                     className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
                     placeholder="Miami"
                     value={city}
@@ -359,14 +408,16 @@ export default function AreasPage() {
               className="h-11 flex-1 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50"
               type="button"
               onClick={handleCloseAreaModal}
+              disabled={saving}
             >
               Cancel
             </button>
             <button
-              className="h-11 flex-1 rounded-xl bg-[#f97316] text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95"
+              className="h-11 flex-1 rounded-xl bg-[#f97316] text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95 disabled:opacity-50"
               type="submit"
+              disabled={saving}
             >
-              {editingAreaSlug ? "Save Changes" : "Save Area"}
+              {saving ? "Saving..." : editingArea ? "Save Changes" : "Save Area"}
             </button>
           </div>
         </form>
