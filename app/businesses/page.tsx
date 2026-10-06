@@ -1,249 +1,478 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import Modal from "@/components/Modal";
+import { apiClient } from "@/api/client";
+import { uploadImage } from "@/api/upload";
 
 const assetBase = "/assets/dashboard/";
 
-const locations = [
-  {
-    name: "Financial District Plaza",
-    slug: "financial-district-plaza",
-    address: "55 Water St, New York, NY 10004, USA",
-    category: "Dining",
-    radius: "3.0 km",
-    phone: "151-111-9991",
-    email: "example@gmail.com",
-    status: "Active",
-  },
-  {
-    name: "Midtown East Suites",
-    slug: "midtown-east-suites",
-    address: "600 Lexington Ave, New York, NY 10022, USA",
-    category: "Cafe",
-    radius: "1.1 km",
-    phone: "151-111-9991",
-    email: "example@gmail.com",
-    status: "Active",
-  },
-  {
-    name: "SoHo Art Gallery",
-    slug: "soho-art-gallery",
-    address: "131 Grand St, New York, NY 10013, USA",
-    category: "Gallery",
-    radius: "2.5 km",
-    phone: "151-222-8888",
-    email: "contact@sohoart.com",
-    status: "Draft",
-  },
-  {
-    name: "Battery Park Fitness",
-    slug: "battery-park-fitness",
-    address: "75 Battery Pl, New York, NY 10280, USA",
-    category: "Gym",
-    radius: "4.2 km",
-    phone: "151-333-7777",
-    email: "info@batteryfit.com",
-    status: "Active",
-  },
-  {
-    name: "Chelsea Market",
-    slug: "chelsea-market",
-    address: "75 9th Ave, New York, NY 10011, USA",
-    category: "Marketplace",
-    radius: "3.8 km",
-    phone: "151-444-6666",
-    email: "contact@chelseamarket.com",
-    status: "Active",
-  },
-  {
-    name: "Upper East Side Books",
-    slug: "upper-east-side-books",
-    address: "123 Lexington Ave, New York, NY 10075, USA",
-    category: "Bookstore",
-    radius: "1.9 km",
-    phone: "151-555-5555",
-    email: "info@uesbooks.com",
-    status: "Draft",
-  },
-  {
-    name: "Greenwich Village Theater",
-    slug: "greenwich-village-theater",
-    address: "50 W 13th St, New York, NY 10011, USA",
-    category: "Theater",
-    radius: "2.7 km",
-    phone: "151-666-4444",
-    email: "bookings@gvtheater.com",
-    status: "Active",
-  },
-  {
-    name: "East Village Music Hall",
-    slug: "east-village-music-hall",
-    address: "95 2nd Ave, New York, NY 10003, USA",
-    category: "Bookstore",
-    radius: "2.3 km",
-    phone: "151-777-3333",
-    email: "contact@evmusichall.com",
-    status: "Active",
-  },
-  {
-    name: "Tribeca Tech Hub",
-    slug: "tribeca-tech-hub",
-    address: "200 Hudson St, New York, NY 10013, USA",
-    category: "Bookstore",
-    radius: "3.1 km",
-    phone: "151-888-2222",
-    email: "hello@tribecatech.com",
-    status: "Draft",
-  },
-  {
-    name: "Harlem Jazz Cafe",
-    slug: "harlem-jazz-cafe",
-    address: "230 W 125th St, New York, NY 10027, USA",
-    category: "Cafe",
-    radius: "5.5 km",
-    phone: "151-999-1111",
-    email: "info@harlemjazzcafe.com",
-    status: "Active",
-  },
-];
+export interface BusinessItem {
+  id: string;
+  name: string;
+  description?: string | null;
+  titleText?: string | null;
+  logoUrl?: string | null;
+  categoryId?: string | null;
+  areaId: string;
+  address: string;
+  phone?: string | null;
+  email?: string | null;
+  websiteUrl?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  tiktokUrl?: string | null;
+  radiusMeters?: number;
+  status: "ACTIVE" | "INACTIVE";
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  area?: {
+    id: string;
+    name: string;
+    city: string;
+    state?: string;
+  };
+  category?: {
+    id: string;
+    name: string;
+    slug?: string;
+  } | null;
+}
 
-const fields = [
-  { label: "Name", placeholder: "Enter business name", span: "md:col-span-6" },
-  { label: "Title text", placeholder: "Label", span: "md:col-span-6" },
-  { label: "Category", placeholder: "Select category", span: "md:col-span-12", select: true },
-];
+interface CategoryOption {
+  id: string;
+  name: string;
+}
+
+interface AreaOption {
+  id: string;
+  name: string;
+  city: string;
+}
 
 export default function BusinessesPage() {
+  const [businessList, setBusinessList] = useState<BusinessItem[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [areas, setAreas] = useState<AreaOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Filters & Search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAreaFilter, setSelectedAreaFilter] = useState("ALL");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("ALL");
+
+  // Drawer / Modal state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [businessList, setBusinessList] = useState(locations);
-  const [editingBusiness, setEditingBusiness] = useState<(typeof locations)[number] | null>(null);
+  const [editingBusiness, setEditingBusiness] = useState<BusinessItem | null>(null);
+  const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [openActionSlug, setOpenActionSlug] = useState<string | null>(null);
+
+  // Logo file / preview
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+  // Form states
+  const [name, setName] = useState("");
+  const [titleText, setTitleText] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [areaId, setAreaId] = useState("");
+  const [address, setAddress] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
+  const [facebookUrl, setFacebookUrl] = useState("");
+  const [tiktokUrl, setTikTokUrl] = useState("");
+
+  async function fetchData() {
+    try {
+      setLoading(true);
+      const [merchantsData, categoriesData, areasData] = await Promise.all([
+        apiClient.get("/merchants").catch((err) => {
+          console.error("Failed to fetch merchants:", err);
+          return [];
+        }),
+        apiClient.get("/categories").catch((err) => {
+          console.error("Failed to fetch categories:", err);
+          return [];
+        }),
+        apiClient.get("/areas").catch((err) => {
+          console.error("Failed to fetch areas:", err);
+          return [];
+        }),
+      ]);
+
+      if (Array.isArray(merchantsData)) {
+        setBusinessList(merchantsData as BusinessItem[]);
+      }
+      if (Array.isArray(categoriesData)) {
+        setCategories(categoriesData as CategoryOption[]);
+      }
+      if (Array.isArray(areasData)) {
+        setAreas(areasData as AreaOption[]);
+      }
+    } catch (err: unknown) {
+      console.error("Error loading businesses data:", err);
+      showToast("Failed to load business data from server");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Close action menus when clicking outside
+  useEffect(() => {
+    if (!openActionId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".action-menu-container")) {
+        setOpenActionId(null);
+      }
+    };
+    window.addEventListener("click", handleClickOutside);
+    return () => window.removeEventListener("click", handleClickOutside);
+  }, [openActionId]);
 
   useEffect(() => {
     return () => {
-      if (logoPreview) {
+      if (logoPreview && logoPreview.startsWith("blob:")) {
         URL.revokeObjectURL(logoPreview);
       }
     };
   }, [logoPreview]);
 
+  function showToast(message: string) {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  }
+
   function handleLogoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const nextPreview = URL.createObjectURL(file);
-    setLogoPreview((currentPreview) => {
-      if (currentPreview) {
-        URL.revokeObjectURL(currentPreview);
-      }
-      return nextPreview;
-    });
+    if (logoPreview && logoPreview.startsWith("blob:")) {
+      URL.revokeObjectURL(logoPreview);
+    }
+
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
   }
 
-  function showToast(message: string) {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 2500);
+  function handleOpenAddBusiness() {
+    setOpenActionId(null);
+    setEditingBusiness(null);
+    setName("");
+    setTitleText("");
+    setCategoryId("");
+    setAreaId(areas[0]?.id || "");
+    setAddress("");
+    setPhone("");
+    setEmail("");
+    setStatus("ACTIVE");
+    setWebsiteUrl("");
+    setInstagramUrl("");
+    setFacebookUrl("");
+    setTikTokUrl("");
+    setLogoFile(null);
+    setLogoPreview(null);
+    setIsDrawerOpen(true);
   }
 
-  function handleEditBusiness(location: (typeof locations)[number]) {
-    setOpenActionSlug(null);
-    setEditingBusiness(location);
+  function handleEditBusiness(business: BusinessItem) {
+    setOpenActionId(null);
+    setEditingBusiness(business);
+    setName(business.name || "");
+    setTitleText(business.titleText || "");
+    setCategoryId(business.categoryId || "");
+    setAreaId(business.areaId || areas[0]?.id || "");
+    setAddress(business.address || "");
+    setPhone(business.phone || "");
+    setEmail(business.email || "");
+    setStatus(business.status || "ACTIVE");
+    setWebsiteUrl(business.websiteUrl || "");
+    setInstagramUrl(business.instagramUrl || "");
+    setFacebookUrl(business.facebookUrl || "");
+    setTikTokUrl(business.tiktokUrl || "");
+    setLogoFile(null);
+    setLogoPreview(business.logoUrl || null);
     setIsDrawerOpen(true);
   }
 
   function handleCloseDrawer() {
     setIsDrawerOpen(false);
     setEditingBusiness(null);
+    if (logoPreview && logoPreview.startsWith("blob:")) {
+      URL.revokeObjectURL(logoPreview);
+    }
+    setLogoFile(null);
+    setLogoPreview(null);
   }
 
-  function handleToggleStatus(slug: string) {
-    setOpenActionSlug(null);
-    setBusinessList((currentList) =>
-      currentList.map((location) =>
-        location.slug === slug
-          ? { ...location, status: location.status === "Active" ? "Draft" : "Active" }
-          : location
-      )
-    );
-
-    const location = businessList.find((item) => item.slug === slug);
-    if (location) {
-      showToast(
-        `${location.name} ${location.status === "Active" ? "unpublished" : "published"}`
+  async function handleToggleStatus(business: BusinessItem) {
+    setOpenActionId(null);
+    const nextStatus = business.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    try {
+      await apiClient.patch(`/merchants/${business.id}`, { status: nextStatus });
+      setBusinessList((currentList) =>
+        currentList.map((item) =>
+          item.id === business.id ? { ...item, status: nextStatus } : item
+        )
       );
+      showToast(
+        `${business.name} ${nextStatus === "ACTIVE" ? "published" : "unpublished"}`
+      );
+    } catch (err: unknown) {
+      console.error("Failed to toggle business status:", err);
+      showToast("Failed to update status");
     }
   }
 
-  function handleDeleteBusiness(slug: string) {
-    setOpenActionSlug(null);
-    const location = businessList.find((item) => item.slug === slug);
-    setBusinessList((currentList) => currentList.filter((item) => item.slug !== slug));
+  async function handleDeleteBusiness(business: BusinessItem) {
+    setOpenActionId(null);
+    if (!confirm(`Are you sure you want to delete ${business.name}?`)) {
+      return;
+    }
 
-    if (location) {
-      showToast(`Deleted ${location.name}`);
+    try {
+      await apiClient.delete(`/merchants/${business.id}`);
+      setBusinessList((currentList) =>
+        currentList.filter((item) => item.id !== business.id)
+      );
+      showToast(`Deleted ${business.name}`);
+    } catch (err: unknown) {
+      console.error("Failed to delete business:", err);
+      showToast("Failed to delete business");
     }
   }
+
+  async function handleSaveBusiness(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!name.trim()) {
+      showToast("Business name is required");
+      return;
+    }
+
+    if (!address.trim()) {
+      showToast("Business address is required");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      let finalLogoUrl = editingBusiness?.logoUrl || undefined;
+
+      // If user selected a new file, upload to Cloudinary
+      if (logoFile) {
+        showToast("Uploading logo...");
+        const uploadRes = await uploadImage(logoFile, "merchants");
+        finalLogoUrl = uploadRes.secureUrl || uploadRes.url;
+      }
+
+      const payload = {
+        name: name.trim(),
+        titleText: titleText.trim() || undefined,
+        categoryId: categoryId || undefined,
+        areaId: areaId || areas[0]?.id || undefined,
+        address: address.trim(),
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        websiteUrl: websiteUrl.trim() || undefined,
+        instagramUrl: instagramUrl.trim() || undefined,
+        facebookUrl: facebookUrl.trim() || undefined,
+        tiktokUrl: tiktokUrl.trim() || undefined,
+        status,
+        ...(finalLogoUrl ? { logoUrl: finalLogoUrl } : {}),
+      };
+
+      if (editingBusiness) {
+        await apiClient.patch(`/merchants/${editingBusiness.id}`, payload);
+        showToast(`Updated ${name.trim()}`);
+      } else {
+        await apiClient.post("/merchants", payload);
+        showToast(`Created ${name.trim()}`);
+      }
+
+      handleCloseDrawer();
+      await fetchData();
+    } catch (err: any) {
+      console.error("Failed to save business:", err);
+      const serverMsg =
+        err.response?.data?.message || err.message || "Failed to save business";
+      showToast(Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Filtered businesses
+  const filteredBusinesses = useMemo(() => {
+    return businessList.filter((b) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        b.name.toLowerCase().includes(q) ||
+        (b.titleText && b.titleText.toLowerCase().includes(q)) ||
+        (b.address && b.address.toLowerCase().includes(q)) ||
+        (b.category?.name && b.category.name.toLowerCase().includes(q)) ||
+        (b.area?.name && b.area.name.toLowerCase().includes(q)) ||
+        (b.phone && b.phone.toLowerCase().includes(q)) ||
+        (b.email && b.email.toLowerCase().includes(q));
+
+      const matchesArea =
+        selectedAreaFilter === "ALL" || b.areaId === selectedAreaFilter;
+
+      const matchesStatus =
+        selectedStatusFilter === "ALL" || b.status === selectedStatusFilter;
+
+      return matchesSearch && matchesArea && matchesStatus;
+    });
+  }, [businessList, searchQuery, selectedAreaFilter, selectedStatusFilter]);
 
   return (
     <div className="w-full p-4 sm:p-6 lg:p-8">
-          <section className="rounded-2xl border border-[#d1d5db] bg-white p-3">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <h1 className="m-0 text-base font-normal leading-6 text-slate-900">Businesses</h1>
-                <p className="mt-1 text-sm leading-5 text-[#475569]">Manage all your businesses</p>
-              </div>
-              <button
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] px-3 py-3 text-base leading-6 text-white sm:w-auto"
-                type="button"
-                onClick={() => setIsDrawerOpen(true)}
-              >
-                <Image src={`${assetBase}imgAdd.svg`} alt="" width={24} height={24} />
-                Add New location
-              </button>
-            </div>
+      <section className="rounded-2xl border border-[#d1d5db] bg-white p-4 sm:p-5">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="m-0 text-lg font-semibold leading-6 text-slate-900">
+              Businesses
+            </h1>
+            <p className="mt-1 text-sm leading-5 text-[#475569]">
+              Manage all your verified locations and merchant profiles ({businessList.length} total)
+            </p>
+          </div>
+          <button
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-95 sm:w-auto"
+            type="button"
+            onClick={handleOpenAddBusiness}
+          >
+            <Image src={`${assetBase}imgAdd.svg`} alt="" width={20} height={20} />
+            Add New Business
+          </button>
+        </div>
 
+        {/* Search & Filter Bar */}
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+              <Image src={`${assetBase}imgSearchNormal.svg`} alt="" width={18} height={18} />
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, address, category, phone..."
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#f97316] focus:bg-white"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <select
+              value={selectedAreaFilter}
+              onChange={(e) => setSelectedAreaFilter(e.target.value)}
+              className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
+            >
+              <option value="ALL">All Areas</option>
+              {areas.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.city})
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedStatusFilter}
+              onChange={(e) => setSelectedStatusFilter(e.target.value)}
+              className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Draft / Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Content area */}
+        {loading ? (
+          <div className="flex h-64 flex-col items-center justify-center gap-3">
+            <div className="size-8 animate-spin rounded-full border-4 border-[#f97316] border-t-transparent" />
+            <p className="text-sm font-medium text-slate-500">Loading businesses from server...</p>
+          </div>
+        ) : filteredBusinesses.length === 0 ? (
+          <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-16 text-center">
+            <div className="grid size-12 place-items-center rounded-full bg-orange-50 text-[#f97316]">
+              <Image src={`${assetBase}imgShop1.svg`} alt="" width={24} height={24} />
+            </div>
+            <h3 className="mt-3 text-sm font-semibold text-slate-900">No businesses found</h3>
+            <p className="mt-1 text-xs text-slate-500 max-w-sm">
+              {searchQuery || selectedAreaFilter !== "ALL" || selectedStatusFilter !== "ALL"
+                ? "Try clearing or adjusting your search filters to find what you're looking for."
+                : "No business listings created yet. Click 'Add New Business' to create your first partner location."}
+            </p>
+            <button
+              type="button"
+              onClick={handleOpenAddBusiness}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-xs font-medium text-white shadow-sm transition-opacity hover:opacity-95"
+            >
+              Add Business
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Mobile Cards View */}
             <div className="mt-4 grid gap-3 lg:hidden">
-              {businessList.map((location) => (
-                <article className="rounded-2xl border border-slate-200 bg-white p-4" key={location.slug}>
+              {filteredBusinesses.map((location) => (
+                <article
+                  className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  key={location.id}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 gap-3">
-                      <span className="relative size-10 shrink-0 overflow-hidden rounded-lg">
+                      <span className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                         <Image
-                          className="scale-150 object-cover"
-                          src={`${assetBase}imgLocationAvatar.png`}
+                          className="object-cover"
+                          src={location.logoUrl || `${assetBase}imgLocationAvatar.png`}
                           alt=""
                           fill
-                          sizes="40px"
+                          sizes="44px"
                         />
                       </span>
                       <div className="min-w-0">
                         <h2 className="truncate text-sm font-semibold text-slate-900">
                           {location.name}
                         </h2>
-                        <p className="truncate text-xs text-slate-500">{location.slug}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {location.titleText || location.area?.name || "Partner"}
+                        </p>
                       </div>
                     </div>
 
-                    <div className="relative shrink-0">
+                    <div className="relative shrink-0 action-menu-container">
                       <button
-                        aria-expanded={openActionSlug === location.slug}
+                        aria-expanded={openActionId === location.id}
                         aria-label={`Open actions for ${location.name}`}
                         className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                         type="button"
                         onClick={() =>
-                          setOpenActionSlug((currentSlug) =>
-                            currentSlug === location.slug ? null : location.slug
+                          setOpenActionId((currentId) =>
+                            currentId === location.id ? null : location.id
                           )
                         }
                       >
                         ⋮
                       </button>
-                      {openActionSlug === location.slug && (
-                        <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                      {openActionId === location.id && (
+                        <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100">
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -254,14 +483,14 @@ export default function BusinessesPage() {
                           <button
                             className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
                             type="button"
-                            onClick={() => handleToggleStatus(location.slug)}
+                            onClick={() => handleToggleStatus(location)}
                           >
-                            {location.status === "Active" ? "Unpublish" : "Publish"}
+                            {location.status === "ACTIVE" ? "Unpublish" : "Publish"}
                           </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
                             type="button"
-                            onClick={() => handleDeleteBusiness(location.slug)}
+                            onClick={() => handleDeleteBusiness(location)}
                           >
                             Delete
                           </button>
@@ -273,114 +502,142 @@ export default function BusinessesPage() {
                   <div className="mt-4 grid gap-3 text-sm">
                     <div>
                       <span className="block text-xs font-medium text-slate-500">Address</span>
-                      <p className="mt-0.5 text-slate-900">{location.address}</p>
+                      <p className="mt-0.5 text-slate-900">{location.address || "—"}</p>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded-xl bg-slate-50 p-3">
                         <span className="block text-xs text-slate-500">Category</span>
-                        <strong className="text-[#f97316]">{location.category}</strong>
+                        <strong className="text-[#f97316]">
+                          {location.category?.name || "General"}
+                        </strong>
                       </div>
                       <div className="rounded-xl bg-slate-50 p-3">
-                        <span className="block text-xs text-slate-500">Radius</span>
-                        <strong className="text-slate-900">{location.radius}</strong>
+                        <span className="block text-xs text-slate-500">Area</span>
+                        <strong className="text-slate-900">
+                          {location.area?.name || "—"}
+                        </strong>
                       </div>
                     </div>
                     <div className="rounded-xl bg-slate-50 p-3">
                       <span className="block text-xs text-slate-500">Contact</span>
-                      <p className="mt-0.5 text-slate-900">{location.phone}</p>
-                      <p className="break-all text-xs text-slate-500">{location.email}</p>
+                      <p className="mt-0.5 text-slate-900">{location.phone || "—"}</p>
+                      <p className="break-all text-xs text-slate-500">{location.email || "—"}</p>
                     </div>
                     <span
                       className={
-                        location.status === "Active"
+                        location.status === "ACTIVE"
                           ? "w-fit rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-[#16a34a]"
                           : "w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
                       }
                     >
-                      {location.status}
+                      {location.status === "ACTIVE" ? "Active" : "Draft"}
                     </span>
                   </div>
                 </article>
               ))}
             </div>
 
+            {/* Desktop Table View */}
             <div className="mt-4 hidden overflow-visible rounded-lg border border-slate-200 lg:block">
-              <div className="grid h-[55px] grid-cols-[minmax(220px,1.4fr)_minmax(170px,1fr)_140px_100px_189px_110px_90px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
-                {["Location name", "Location", "Category", "Radius", "Contact", "Status", "Actions"].map(
-                  (heading) => (
-                    <div className="border-r border-slate-300 px-3 last:border-r-0" key={heading}>
-                      {heading}
-                    </div>
-                  ),
-                )}
+              <div className="grid h-[55px] grid-cols-[minmax(220px,1.4fr)_minmax(170px,1fr)_130px_130px_180px_100px_80px] items-center bg-slate-100 text-sm font-medium leading-5 text-[#315576]">
+                {[
+                  "Location name",
+                  "Location",
+                  "Category",
+                  "Area",
+                  "Contact",
+                  "Status",
+                  "Actions",
+                ].map((heading) => (
+                  <div className="border-r border-slate-300 px-3 last:border-r-0" key={heading}>
+                    {heading}
+                  </div>
+                ))}
               </div>
 
-              {businessList.map((location) => (
+              {filteredBusinesses.map((location) => (
                 <div
-                  className="grid h-[52px] grid-cols-[minmax(220px,1.4fr)_minmax(170px,1fr)_140px_100px_189px_110px_90px] items-center border-b border-dashed border-slate-200 bg-white last:border-b-0"
-                  key={location.slug}
+                  className="grid h-[56px] grid-cols-[minmax(220px,1.4fr)_minmax(170px,1fr)_130px_130px_180px_100px_80px] items-center border-b border-dashed border-slate-200 bg-white last:border-b-0 hover:bg-slate-50/50 transition-colors"
+                  key={location.id}
                 >
+                  {/* Name + Logo */}
                   <div className="flex min-w-0 items-center gap-3 px-3 py-2">
-                    <span className="relative size-8 shrink-0 overflow-hidden rounded">
+                    <span className="relative size-8 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
                       <Image
-                        className="scale-150 object-cover"
-                        src={`${assetBase}imgLocationAvatar.png`}
+                        className="object-cover"
+                        src={location.logoUrl || `${assetBase}imgLocationAvatar.png`}
                         alt=""
                         fill
                         sizes="32px"
                       />
                     </span>
                     <span className="min-w-0">
-                      <strong className="block truncate text-sm font-normal leading-5 text-slate-900">
+                      <strong className="block truncate text-sm font-medium leading-5 text-slate-900">
                         {location.name}
                       </strong>
                       <small className="block truncate text-xs leading-4 text-[#475569]">
-                        {location.slug}
+                        {location.titleText || location.area?.name || "Business"}
                       </small>
                     </span>
                   </div>
-                  <p className="truncate px-3 text-sm leading-5 text-slate-900">{location.address}</p>
+
+                  {/* Address */}
+                  <p className="truncate px-3 text-sm leading-5 text-slate-900">
+                    {location.address || "—"}
+                  </p>
+
+                  {/* Category */}
                   <div className="px-3">
-                    <span className="inline-flex h-6 items-center rounded bg-orange-50 px-2 text-sm leading-5 text-[#f97316]">
-                      {location.category}
+                    <span className="inline-flex h-6 items-center rounded bg-orange-50 px-2 text-xs font-medium leading-5 text-[#f97316]">
+                      {location.category?.name || "General"}
                     </span>
                   </div>
-                  <p className="px-3 text-sm leading-5 text-slate-900">{location.radius}</p>
+
+                  {/* Area */}
+                  <p className="truncate px-3 text-sm leading-5 font-medium text-slate-900">
+                    {location.area?.name || "—"}
+                  </p>
+
+                  {/* Contact */}
                   <div className="min-w-0 px-3">
                     <strong className="block truncate text-sm font-normal leading-5 text-slate-900">
-                      {location.phone}
+                      {location.phone || "—"}
                     </strong>
                     <small className="block truncate text-xs leading-4 text-[#475569]">
-                      {location.email}
+                      {location.email || "—"}
                     </small>
                   </div>
+
+                  {/* Status */}
                   <div className="px-3">
                     <span
                       className={
-                        location.status === "Active"
-                          ? "inline-flex h-6 items-center rounded bg-emerald-100 px-2 text-sm leading-5 text-[#16a34a]"
-                          : "inline-flex h-6 items-center rounded bg-slate-100 px-2 text-sm leading-5 text-slate-600"
+                        location.status === "ACTIVE"
+                          ? "inline-flex h-6 items-center rounded bg-emerald-100 px-2 text-xs font-medium leading-5 text-[#16a34a]"
+                          : "inline-flex h-6 items-center rounded bg-slate-100 px-2 text-xs font-medium leading-5 text-slate-600"
                       }
                     >
-                      {location.status}
+                      {location.status === "ACTIVE" ? "Active" : "Draft"}
                     </span>
                   </div>
-                  <div className="relative flex items-center justify-center px-3">
+
+                  {/* Actions Dropdown */}
+                  <div className="relative flex items-center justify-center px-3 action-menu-container">
                     <button
-                      aria-expanded={openActionSlug === location.slug}
+                      aria-expanded={openActionId === location.id}
                       aria-label={`Open actions for ${location.name}`}
                       className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                       type="button"
                       onClick={() =>
-                        setOpenActionSlug((currentSlug) =>
-                          currentSlug === location.slug ? null : location.slug
+                        setOpenActionId((currentId) =>
+                          currentId === location.id ? null : location.id
                         )
                       }
                     >
                       ⋮
                     </button>
-                    {openActionSlug === location.slug && (
-                      <div className="absolute right-3 top-10 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                    {openActionId === location.id && (
+                      <div className="absolute right-3 top-10 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100">
                         <button
                           className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                           type="button"
@@ -391,14 +648,14 @@ export default function BusinessesPage() {
                         <button
                           className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
                           type="button"
-                          onClick={() => handleToggleStatus(location.slug)}
+                          onClick={() => handleToggleStatus(location)}
                         >
-                          {location.status === "Active" ? "Unpublish" : "Publish"}
+                          {location.status === "ACTIVE" ? "Unpublish" : "Publish"}
                         </button>
                         <button
                           className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
                           type="button"
-                          onClick={() => handleDeleteBusiness(location.slug)}
+                          onClick={() => handleDeleteBusiness(location)}
                         >
                           Delete
                         </button>
@@ -408,137 +665,277 @@ export default function BusinessesPage() {
                 </div>
               ))}
             </div>
-          </section>
+          </>
+        )}
+      </section>
 
+      {/* Add / Edit Business Modal */}
       <Modal
         isOpen={isDrawerOpen}
         onClose={handleCloseDrawer}
         title={editingBusiness ? "Edit Business" : "Add New Business"}
         subtitle={
           editingBusiness
-            ? `Update ${editingBusiness.name}`
-            : "Enter business"
+            ? `Update details for ${editingBusiness.name}`
+            : "Enter business profile details"
         }
-        maxWidth="max-w-[620px]"
+        maxWidth="max-w-[640px]"
       >
-        <form
-          className="flex flex-col gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            showToast(editingBusiness ? "Business changes saved" : "Business saved");
-            handleCloseDrawer();
-          }}
-        >
-          <div className="flex w-full items-center gap-6 rounded-3xl border border-[#e5e7eb] bg-gray-100 p-3.5">
-            <Image
-              className="size-[76px] rounded-2xl border-2 border-[#d1d5db] object-cover"
-              src={logoPreview ?? `${assetBase}imgBusinessLogo.png`}
-              alt=""
-              width={76}
-              height={76}
-              unoptimized={!!logoPreview}
-            />
-            <label
-              className="flex h-12 cursor-pointer items-center rounded-lg border border-[#e5e7eb] bg-gray-50 px-3.5 py-3 text-base font-medium leading-6 text-gray-900 shadow-md hover:bg-white"
-              htmlFor="business-logo-upload"
-            >
-              Upload Logo
-              <input
-                className="sr-only"
-                id="business-logo-upload"
-                type="file"
-                accept="image/*"
-                onChange={handleLogoChange}
+        <form className="flex flex-col gap-4" onSubmit={handleSaveBusiness}>
+          {/* Logo Upload Card */}
+          <div className="flex w-full items-center gap-5 rounded-2xl border border-[#e5e7eb] bg-gray-50 p-4">
+            <div className="relative size-16 shrink-0 overflow-hidden rounded-xl border-2 border-[#d1d5db] bg-white shadow-inner">
+              <Image
+                className="object-cover"
+                src={logoPreview ?? `${assetBase}imgBusinessLogo.png`}
+                alt=""
+                fill
+                sizes="64px"
               />
-            </label>
+            </div>
+            <div className="flex-1">
+              <label
+                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-[#e5e7eb] bg-white px-4 text-sm font-medium text-gray-900 shadow-sm transition hover:bg-gray-100"
+                htmlFor="business-logo-upload"
+              >
+                Upload Logo
+                <input
+                  className="sr-only"
+                  id="business-logo-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoChange}
+                />
+              </label>
+              <p className="mt-1 text-xs text-slate-500">
+                PNG, JPG or WebP up to 10MB
+              </p>
+            </div>
           </div>
 
-          <div className="rounded-3xl border border-[#e5e7eb] bg-white p-3.5">
-            <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-12">
-              {fields.map((field) => (
-                <label
-                  className={`grid min-w-0 gap-1 ${field.span}`}
-                  key={field.label}
-                >
-                  <span className="text-sm leading-5 text-slate-900">{field.label}</span>
-                  <span className="flex h-[42px] min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm leading-[22px] tracking-[0.22px] text-[#475569]">
-                    <input
-                      className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-[#475569]"
-                      placeholder={field.placeholder}
-                    />
-                    {field.select && (
-                      <Image src={`${assetBase}imgArrowDown.svg`} alt="" width={24} height={24} />
-                    )}
-                  </span>
-                </label>
-              ))}
-              <label className="grid min-w-0 gap-1 md:col-span-12">
-                <span className="text-sm leading-5 text-slate-900">Address</span>
-                <span className="flex h-[42px] min-w-0 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm leading-[22px] tracking-[0.22px] text-[#475569]">
+          {/* Form Fields Card */}
+          <div className="rounded-2xl border border-[#e5e7eb] bg-white p-4">
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-12">
+              {/* Business Name */}
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">
+                  Business Name <span className="text-red-500">*</span>
+                </span>
+                <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
                   <input
-                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-[#475569]"
-                    placeholder="Search address: (e.g. 1560, New York, NY)"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                    placeholder="e.g. Madrid Coffee Club"
                   />
                 </span>
               </label>
 
-              <div className="grid min-w-0 gap-3.5 md:col-span-6">
-                <Field label="Website" placeholder="www.example.com" />
-                <Field label="Instagram" placeholder="instagram.com/username" />
+              {/* Title Text / Tagline */}
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">
+                  Title text / Tagline
+                </span>
+                <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <input
+                    value={titleText}
+                    onChange={(e) => setTitleText(e.target.value)}
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                    placeholder="e.g. Artisanal Espresso & Pastries"
+                  />
+                </span>
+              </label>
+
+              {/* Category */}
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">Category</span>
+                <span className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <select
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none cursor-pointer"
+                  >
+                    <option value="">Select category</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              </label>
+
+              {/* Area */}
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">
+                  Area <span className="text-red-500">*</span>
+                </span>
+                <span className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <select
+                    value={areaId}
+                    onChange={(e) => setAreaId(e.target.value)}
+                    required
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none cursor-pointer"
+                  >
+                    <option value="">Select area</option>
+                    {areas.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.city})
+                      </option>
+                    ))}
+                  </select>
+                </span>
+              </label>
+
+              {/* Address */}
+              <label className="grid min-w-0 gap-1 md:col-span-12">
+                <span className="text-xs font-medium text-slate-700">
+                  Address <span className="text-red-500">*</span>
+                </span>
+                <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <input
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    required
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                    placeholder="e.g. Gran Vía 42, Madrid"
+                  />
+                </span>
+              </label>
+
+              {/* Phone & Email */}
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">Phone</span>
+                <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                    placeholder="e.g. +34 912 345 678"
+                  />
+                </span>
+              </label>
+
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">Email</span>
+                <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                    placeholder="e.g. contact@business.com"
+                  />
+                </span>
+              </label>
+
+              {/* Status */}
+              <label className="grid min-w-0 gap-1 md:col-span-12">
+                <span className="text-xs font-medium text-slate-700">Status</span>
+                <span className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as "ACTIVE" | "INACTIVE")}
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none cursor-pointer"
+                  >
+                    <option value="ACTIVE">Active (Published)</option>
+                    <option value="INACTIVE">Draft (Hidden)</option>
+                  </select>
+                </span>
+              </label>
+
+              {/* Social Links */}
+              <div className="grid min-w-0 gap-3 md:col-span-6">
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-medium text-slate-700">Website</span>
+                  <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                    <input
+                      value={websiteUrl}
+                      onChange={(e) => setWebsiteUrl(e.target.value)}
+                      className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                      placeholder="https://www.example.com"
+                    />
+                  </span>
+                </label>
+
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-medium text-slate-700">Instagram</span>
+                  <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                    <input
+                      value={instagramUrl}
+                      onChange={(e) => setInstagramUrl(e.target.value)}
+                      className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                      placeholder="https://instagram.com/username"
+                    />
+                  </span>
+                </label>
               </div>
 
-              <div className="grid min-w-0 gap-3.5 md:col-span-6">
-                <Field label="Facebook" placeholder="facebook.com/username" />
-                <Field label="TikTok" placeholder="tiktok.com/@username" />
+              <div className="grid min-w-0 gap-3 md:col-span-6">
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-medium text-slate-700">Facebook</span>
+                  <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                    <input
+                      value={facebookUrl}
+                      onChange={(e) => setFacebookUrl(e.target.value)}
+                      className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                      placeholder="https://facebook.com/username"
+                    />
+                  </span>
+                </label>
+
+                <label className="grid min-w-0 gap-1">
+                  <span className="text-xs font-medium text-slate-700">TikTok</span>
+                  <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                    <input
+                      value={tiktokUrl}
+                      onChange={(e) => setTikTokUrl(e.target.value)}
+                      className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                      placeholder="https://tiktok.com/@username"
+                    />
+                  </span>
+                </label>
               </div>
             </div>
           </div>
 
-          <div className="flex w-full gap-3 pt-1">
+          {/* Action Buttons */}
+          <div className="flex w-full gap-3 pt-2">
             <button
-              className="h-12 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-base leading-6 text-slate-900 hover:bg-slate-100"
+              className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
               type="button"
+              disabled={saving}
               onClick={handleCloseDrawer}
             >
               Cancel
             </button>
             <button
-              className="h-12 flex-1 rounded-xl bg-[#f97316] px-3 py-3 text-base leading-6 text-white hover:opacity-95"
+              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#f97316] px-4 text-sm font-medium text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
               type="submit"
+              disabled={saving}
             >
-              {editingBusiness ? "Save Changes" : "Save Business"}
+              {saving ? (
+                <>
+                  <div className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Saving...
+                </>
+              ) : editingBusiness ? (
+                "Save Changes"
+              ) : (
+                "Save Business"
+              )}
             </button>
           </div>
         </form>
       </Modal>
 
+      {/* Floating Toast Notice */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl">
-          {toastMessage}
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <span>{toastMessage}</span>
         </div>
       )}
     </div>
-  );
-}
-
-function Field({
-  label,
-  placeholder,
-  className = "",
-}: {
-  label: string;
-  placeholder: string;
-  className?: string;
-}) {
-  return (
-    <label className={`grid min-w-0 gap-1 ${className}`}>
-      <span className="text-sm leading-5 text-slate-900">{label}</span>
-      <span className="flex h-[42px] min-w-0 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm leading-[22px] tracking-[0.22px] text-[#475569]">
-        <input
-          className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-[#475569]"
-          placeholder={placeholder}
-        />
-      </span>
-    </label>
   );
 }
