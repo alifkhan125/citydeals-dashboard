@@ -1,62 +1,144 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/api/client";
 import Modal from "@/components/Modal";
+import { toast } from "@/components/Toast";
 
 type TicketStatus = "Open" | "Pending" | "Closed";
 
-type SupportTicket = {
+interface ApiSupportTicket {
   id: string;
+  userId?: string | null;
+  fullName: string;
+  email: string;
+  message: string;
+  response?: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    fullName?: string | null;
+    email?: string | null;
+  } | null;
+}
+
+interface SupportTicket {
+  id: string;
+  rawId: string;
   user: string;
   email: string;
   message: string;
   status: TicketStatus;
   created: string;
+  createdAt: string;
   response?: string;
-};
-
-const initialTickets: SupportTicket[] = [
-  {
-    id: "#1001",
-    user: "Nasimul Noyon",
-    email: "nasimul@example.com",
-    message: "My app is not working...",
-    status: "Open",
-    created: "2 min ago",
-  },
-  {
-    id: "#1002",
-    user: "Maya Carter",
-    email: "maya@example.com",
-    message: "Coupon did not redeem",
-    status: "Pending",
-    created: "1 hour ago",
-    response: "We are checking this coupon redemption with the merchant.",
-  },
-  {
-    id: "#1003",
-    user: "Ravi Singh",
-    email: "ravi@example.com",
-    message: "Please update my email",
-    status: "Closed",
-    created: "Yesterday",
-    response: "Your account email update request has been completed.",
-  },
-];
+}
 
 const ticketStatuses: TicketStatus[] = ["Open", "Pending", "Closed"];
 
+function formatRelativeTime(dateString: string): string {
+  try {
+    const createdDate = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - createdDate.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+
+    if (diffMinutes < 1) return "Just now";
+    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+
+    return createdDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "Recently";
+  }
+}
+
 export default function SupportTicketsPage() {
-  const [tickets, setTickets] = useState(initialTickets);
+  const queryClient = useQueryClient();
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [replyMessage, setReplyMessage] = useState("");
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [openStatusMenuId, setOpenStatusMenuId] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<string>("All");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
-  function showToast(message: string) {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 2500);
-  }
+  // Fetch real support tickets from backend API
+  const {
+    data: tickets = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ["support-tickets"],
+    queryFn: async () => {
+      const res = await apiClient.get<any>("/support/tickets");
+      const list: ApiSupportTicket[] = Array.isArray(res) ? res : res?.data || [];
+
+      return list.map((item): SupportTicket => {
+        const rawStatus = (item.status || "OPEN").toUpperCase();
+        let status: TicketStatus = "Open";
+        if (rawStatus === "CLOSED") status = "Closed";
+        else if (rawStatus === "PENDING") status = "Pending";
+
+        return {
+          id: `#${item.id.slice(0, 6).toUpperCase()}`,
+          rawId: item.id,
+          user: item.fullName || item.user?.fullName || "Guest User",
+          email: item.email || item.user?.email || "No email",
+          message: item.message || "",
+          status,
+          created: formatRelativeTime(item.createdAt),
+          createdAt: item.createdAt,
+          response: item.response || undefined,
+        };
+      });
+    },
+  });
+
+  // Mutation to update ticket status
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ rawId, status }: { rawId: string; status: TicketStatus }) => {
+      return apiClient.patch(`/support/tickets/${rawId}/status`, {
+        status: status.toUpperCase(),
+      });
+    },
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
+      toast.success(`Ticket status updated to ${status}`);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to update ticket status");
+    },
+  });
+
+  // Mutation to reply to ticket
+  const replyMutation = useMutation({
+    mutationFn: async ({ rawId, response }: { rawId: string; response: string }) => {
+      return apiClient.patch(`/support/tickets/${rawId}/reply`, {
+        response,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["support-tickets"] });
+      toast.success("Reply submitted successfully", {
+        title: "Ticket Updated",
+      });
+      closeReply();
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || err?.message || "Failed to send reply");
+    },
+  });
 
   function openReply(ticket: SupportTicket) {
     setSelectedTicket(ticket);
@@ -72,72 +154,91 @@ export default function SupportTicketsPage() {
     event.preventDefault();
     if (!selectedTicket || !replyMessage.trim()) return;
 
-    setTickets((currentTickets) =>
-      currentTickets.map((ticket) =>
-        ticket.id === selectedTicket.id
-          ? {
-              ...ticket,
-              response: replyMessage.trim(),
-              status: "Pending",
-            }
-          : ticket
-      )
-    );
-
-    showToast(`Reply sent to ${selectedTicket.user}`);
-    closeReply();
+    replyMutation.mutate({
+      rawId: selectedTicket.rawId,
+      response: replyMessage.trim(),
+    });
   }
 
-  function handleStatusChange(id: string, status: TicketStatus) {
+  function handleStatusChange(rawId: string, status: TicketStatus) {
     setOpenStatusMenuId(null);
-    setTickets((currentTickets) =>
-      currentTickets.map((ticket) => (ticket.id === id ? { ...ticket, status } : ticket))
-    );
-    showToast(`Ticket ${id} marked ${status}`);
+    updateStatusMutation.mutate({ rawId, status });
   }
 
   function getStatusClass(status: TicketStatus) {
-    if (status === "Open") return "bg-orange-50 text-[#f97316]";
-    if (status === "Pending") return "bg-blue-50 text-blue-700";
-    return "bg-slate-100 text-slate-600";
+    if (status === "Open") return "bg-orange-50 text-[#f97316] border border-orange-200";
+    if (status === "Pending") return "bg-blue-50 text-blue-700 border border-blue-200";
+    return "bg-slate-100 text-slate-600 border border-slate-200";
   }
 
-  function renderStatusMenu(ticket: SupportTicket) {
-    const isOpen = openStatusMenuId === ticket.id;
+  // Filtered tickets based on tab and search
+  const filteredTickets = useMemo(() => {
+    return tickets.filter((t) => {
+      const matchesFilter =
+        activeFilter === "All" || t.status.toLowerCase() === activeFilter.toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        t.id.toLowerCase().includes(q) ||
+        t.user.toLowerCase().includes(q) ||
+        t.email.toLowerCase().includes(q) ||
+        t.message.toLowerCase().includes(q);
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [tickets, activeFilter, searchQuery]);
+
+  function renderStatusMenu(ticket: SupportTicket, isUpwards: boolean = false) {
+    const isOpen = openStatusMenuId === ticket.rawId;
 
     return (
       <div className="relative min-w-0">
         <button
           aria-expanded={isOpen}
-          className="flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-left text-xs text-slate-700 outline-none transition-colors hover:border-[#f97316] hover:bg-orange-50 focus:border-[#f97316] focus:ring-2 focus:ring-orange-100 lg:h-9"
+          className="flex h-10 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-left text-xs font-medium text-slate-700 outline-none transition-colors hover:border-[#f97316] hover:bg-orange-50/50 focus:border-[#f97316] focus:ring-2 focus:ring-orange-100 lg:h-9"
           type="button"
-          onClick={() => setOpenStatusMenuId((currentId) => (currentId === ticket.id ? null : ticket.id))}
+          onClick={() =>
+            setOpenStatusMenuId((currentId) => (currentId === ticket.rawId ? null : ticket.rawId))
+          }
+          disabled={updateStatusMutation.isPending}
         >
           <span>{ticket.status}</span>
-          <span className="text-[#f97316]">⌄</span>
+          <span className="text-[#f97316]">▾</span>
         </button>
 
         {isOpen && (
-          <div className="absolute left-0 top-[calc(100%+4px)] z-30 w-full min-w-36 overflow-hidden rounded-lg border border-orange-200 bg-white py-1 text-xs shadow-xl">
-            {ticketStatuses.map((status) => {
-              const isSelected = status === ticket.status;
+          <>
+            {/* Click-outside backdrop to dismiss */}
+            <div
+              className="fixed inset-0 z-20 cursor-default"
+              onClick={() => setOpenStatusMenuId(null)}
+            />
 
-              return (
-                <button
-                  className={
-                    isSelected
-                      ? "block w-full bg-[#f97316] px-3 py-2 text-left font-medium text-white"
-                      : "block w-full px-3 py-2 text-left text-slate-700 hover:bg-orange-100 hover:text-orange-800"
-                  }
-                  key={status}
-                  type="button"
-                  onClick={() => handleStatusChange(ticket.id, status)}
-                >
-                  {status}
-                </button>
-              );
-            })}
-          </div>
+            <div
+              className={`absolute right-0 z-30 w-36 overflow-hidden rounded-xl border border-orange-200 bg-white py-1 text-xs shadow-2xl ${
+                isUpwards ? "bottom-[calc(100%+4px)]" : "top-[calc(100%+4px)]"
+              }`}
+            >
+              {ticketStatuses.map((status) => {
+                const isSelected = status === ticket.status;
+
+                return (
+                  <button
+                    className={
+                      isSelected
+                        ? "block w-full bg-[#f97316] px-3.5 py-2 text-left font-semibold text-white"
+                        : "block w-full px-3.5 py-2 text-left font-medium text-slate-700 hover:bg-orange-50 hover:text-orange-600 transition-colors"
+                    }
+                    key={status}
+                    type="button"
+                    onClick={() => handleStatusChange(ticket.rawId, status)}
+                  >
+                    {status}
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     );
@@ -145,175 +246,319 @@ export default function SupportTicketsPage() {
 
   return (
     <div className="w-full px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs">
+        {/* Header & Stats */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl font-semibold text-slate-900">Help & Support Tickets</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+              Help & Support Tickets
+            </h1>
             <p className="mt-1 text-sm leading-5 text-slate-500">
-              Review support requests, send replies and update ticket status.
+              Manage incoming support inquiries from the mobile app, respond directly, and track
+              ticket statuses.
             </p>
           </div>
+
           <div className="grid w-full grid-cols-3 gap-2 text-sm sm:w-auto">
-            {["Open", "Pending", "Closed"].map((status) => (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2" key={status}>
-                <span className="block text-xs text-slate-500">{status}</span>
-                <strong className="text-slate-900">
-                  {tickets.filter((ticket) => ticket.status === status).length}
-                </strong>
-              </div>
-            ))}
+            {ticketStatuses.map((status) => {
+              const count = tickets.filter((t) => t.status === status).length;
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setActiveFilter(status)}
+                  className={`rounded-xl border px-3.5 py-2 text-left transition-all ${
+                    activeFilter === status
+                      ? "border-orange-500 bg-orange-50/70 ring-1 ring-orange-400"
+                      : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="block text-xs font-medium text-slate-500">{status}</span>
+                  <strong className="text-base font-bold text-slate-900">{count}</strong>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 lg:hidden">
-          {tickets.map((ticket) => (
-            <article
-              className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
-              key={ticket.id}
+        {/* Filter and Search Bar */}
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-y border-slate-100 py-3.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto">
+            {["All", "Open", "Pending", "Closed"].map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveFilter(tab)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  activeFilter === tab
+                    ? "bg-[#f97316] text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {tab}
+                {tab === "All" && ` (${tickets.length})`}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-72">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by user, email, message..."
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-orange-500 focus:outline-none"
+            />
+            <svg
+              className="absolute left-3 top-2.5 size-4 text-slate-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-900">{ticket.id}</span>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+        </div>
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="size-8 animate-spin rounded-full border-4 border-orange-500 border-t-transparent" />
+            <p className="mt-3 text-sm text-slate-500 font-medium">Loading support tickets...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {isError && !isLoading && (
+          <div className="my-8 rounded-xl border border-red-200 bg-red-50 p-6 text-center">
+            <p className="text-sm font-semibold text-red-600">Failed to load support tickets</p>
+            <p className="mt-1 text-xs text-red-500">
+              Please check your connection or make sure the backend server is running.
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-xs font-medium text-white hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && !isError && filteredTickets.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="flex size-14 items-center justify-center rounded-full bg-orange-50 text-orange-600 mb-3">
+              <svg className="size-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                />
+              </svg>
+            </div>
+            <h3 className="text-base font-bold text-slate-900">No support tickets found</h3>
+            <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">
+              {searchQuery
+                ? "No tickets match your search query. Try clearing the search filter."
+                : "When users submit inquiries through the mobile app, tickets will show up here."}
+            </p>
+          </div>
+        )}
+
+        {/* Mobile / Tablet Card View */}
+        {!isLoading && !isError && filteredTickets.length > 0 && (
+          <div className="mt-5 grid gap-3 lg:hidden">
+            {filteredTickets.map((ticket, index) => (
+              <article
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs"
+                key={ticket.rawId}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-slate-900">{ticket.id}</span>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${getStatusClass(
+                          ticket.status
+                        )}`}
+                      >
+                        {ticket.status}
+                      </span>
+                    </div>
+                    <h2 className="mt-2 text-sm font-semibold leading-5 text-slate-900">
+                      {ticket.user}
+                    </h2>
+                    <p className="truncate text-xs text-slate-500">{ticket.email}</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-slate-400">{ticket.created}</span>
+                </div>
+
+                <div className="mt-3 rounded-xl bg-slate-50 p-3.5 border border-slate-100">
+                  <p className="text-xs leading-relaxed text-slate-800 whitespace-pre-wrap">
+                    {ticket.message}
+                  </p>
+                  {ticket.response && (
+                    <div className="mt-2.5 border-t border-slate-200/80 pt-2 text-xs leading-relaxed text-orange-950 bg-orange-50/70 p-2 rounded-lg border border-orange-100">
+                      <strong className="block text-orange-700 text-[11px] uppercase font-bold tracking-wider mb-0.5">
+                        Admin Reply:
+                      </strong>
+                      {ticket.response}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3.5 grid grid-cols-[1fr_auto] gap-2">
+                  {renderStatusMenu(
+                    ticket,
+                    index === filteredTickets.length - 1 && filteredTickets.length > 1
+                  )}
+                  <button
+                    className="h-10 rounded-lg bg-[#f97316] px-4 text-xs font-semibold text-white shadow-xs hover:bg-orange-600 active:scale-98 transition-all"
+                    type="button"
+                    onClick={() => openReply(ticket)}
+                  >
+                    Reply
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {/* Desktop Table View */}
+        {!isLoading && !isError && filteredTickets.length > 0 && (
+          <div className="mt-5 hidden overflow-x-auto rounded-xl border border-slate-200 lg:block min-h-[280px] pb-24">
+            <div className="min-w-[980px]">
+              <div className="grid grid-cols-[110px_1fr_1.8fr_110px_130px_200px] bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                {["Ticket", "User", "Message", "Status", "Created", "Actions"].map((heading) => (
+                  <div className="border-r border-slate-200 px-4 py-3.5 last:border-r-0" key={heading}>
+                    {heading}
+                  </div>
+                ))}
+              </div>
+
+              {filteredTickets.map((ticket, index) => (
+                <div
+                  className="grid grid-cols-[110px_1fr_1.8fr_110px_130px_200px] items-center border-t border-slate-200 text-sm hover:bg-slate-50/50 transition-colors"
+                  key={ticket.rawId}
+                >
+                  <div className="px-4 py-3 font-mono font-semibold text-slate-900">{ticket.id}</div>
+                  <div className="min-w-0 px-4 py-3">
+                    <strong className="block truncate text-sm font-semibold text-slate-900">
+                      {ticket.user}
+                    </strong>
+                    <small className="block truncate text-xs text-slate-500">{ticket.email}</small>
+                  </div>
+                  <div className="min-w-0 px-4 py-3">
+                    <p className="line-clamp-2 text-xs leading-relaxed text-slate-800">
+                      {ticket.message}
+                    </p>
+                    {ticket.response && (
+                      <p className="mt-1 line-clamp-1 text-[11px] text-orange-600 font-medium">
+                        ↳ Replied: {ticket.response}
+                      </p>
+                    )}
+                  </div>
+                  <div className="px-4 py-3">
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClass(
+                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${getStatusClass(
                         ticket.status
                       )}`}
                     >
                       {ticket.status}
                     </span>
                   </div>
-                  <h2 className="mt-2 text-sm font-medium leading-5 text-slate-900">
-                    {ticket.user}
-                  </h2>
-                  <p className="truncate text-xs leading-4 text-slate-500">{ticket.email}</p>
-                </div>
-                <span className="shrink-0 text-xs text-slate-500">{ticket.created}</span>
-              </div>
-
-              <div className="mt-3 rounded-lg bg-slate-50 p-3">
-                <p className="text-sm leading-5 text-slate-900">{ticket.message}</p>
-                {ticket.response && (
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    Reply: {ticket.response}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
-                {renderStatusMenu(ticket)}
-                <button
-                  className="h-10 rounded-lg bg-[#f97316] px-4 text-xs font-medium text-white hover:opacity-95"
-                  type="button"
-                  onClick={() => openReply(ticket)}
-                >
-                  Reply
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-
-        <div className="mt-5 hidden overflow-x-auto overflow-y-visible rounded-xl border border-slate-200 lg:block">
-          <div className="min-w-[980px]">
-            <div className="grid grid-cols-[100px_1fr_1.7fr_110px_120px_210px] bg-slate-100 text-sm text-[#315576]">
-              {["Ticket", "User", "Message", "Status", "Created", "Actions"].map((heading) => (
-                <div className="border-r border-slate-300 px-4 py-3 last:border-r-0" key={heading}>
-                  {heading}
+                  <div className="px-4 py-3 text-xs text-slate-500">{ticket.created}</div>
+                  <div className="flex items-center gap-2 px-4 py-3">
+                    <button
+                      className="rounded-lg bg-[#f97316] px-3 py-1.5 text-xs font-semibold text-white shadow-xs hover:bg-orange-600 transition-colors"
+                      type="button"
+                      onClick={() => openReply(ticket)}
+                    >
+                      Reply
+                    </button>
+                    <div className="w-28">
+                      {renderStatusMenu(
+                        ticket,
+                        index >= filteredTickets.length - 1 && filteredTickets.length > 2
+                      )}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-
-            {tickets.map((ticket) => (
-              <div
-                className="grid grid-cols-[100px_1fr_1.7fr_110px_120px_210px] items-center border-t border-dashed border-slate-200 text-sm"
-                key={ticket.id}
-              >
-                <div className="px-4 py-3 font-medium text-slate-900">{ticket.id}</div>
-                <div className="min-w-0 px-4 py-3">
-                  <strong className="block truncate text-sm font-normal text-slate-900">
-                    {ticket.user}
-                  </strong>
-                  <small className="block truncate text-xs text-slate-500">{ticket.email}</small>
-                </div>
-                <div className="min-w-0 px-4 py-3">
-                  <p className="truncate text-slate-900">{ticket.message}</p>
-                  {ticket.response && (
-                    <p className="mt-1 truncate text-xs text-slate-500">Reply: {ticket.response}</p>
-                  )}
-                </div>
-                <div className="px-4 py-3">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStatusClass(ticket.status)}`}>
-                    {ticket.status}
-                  </span>
-                </div>
-                <div className="px-4 py-3 text-slate-500">{ticket.created}</div>
-                <div className="flex items-center gap-2 px-4 py-3">
-                  <button
-                    className="rounded-lg bg-[#f97316] px-3 py-2 text-xs font-medium text-white hover:opacity-95"
-                    type="button"
-                    onClick={() => openReply(ticket)}
-                  >
-                    Reply
-                  </button>
-                  <div className="w-28">{renderStatusMenu(ticket)}</div>
-                </div>
-              </div>
-            ))}
           </div>
-        </div>
+        )}
+
       </section>
 
+      {/* Reply Modal */}
       <Modal
         isOpen={!!selectedTicket}
         onClose={closeReply}
-        title={selectedTicket ? `Reply to ${selectedTicket.user}` : "Reply"}
+        title={selectedTicket ? `Reply to ${selectedTicket.user}` : "Reply to Ticket"}
         subtitle={selectedTicket ? `${selectedTicket.id} · ${selectedTicket.email}` : undefined}
-        maxWidth="max-w-[560px]"
+        maxWidth="max-w-[580px]"
       >
         {selectedTicket && (
           <form className="flex flex-col gap-4" onSubmit={handleSendReply}>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                User message
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                User Inquiry
               </span>
-              <p className="mt-1 text-sm leading-6 text-slate-900">{selectedTicket.message}</p>
+              <p className="mt-1.5 text-xs sm:text-sm leading-relaxed text-slate-800 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                {selectedTicket.message}
+              </p>
             </div>
 
-            <label className="grid gap-1">
-              <span className="text-sm font-medium text-slate-900">Response</span>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold text-slate-700">
+                Official Response / Notes
+              </span>
               <textarea
-                className="min-h-32 resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-400"
-                placeholder="Write your response to the user..."
+                className="min-h-32 resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-xs sm:text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 leading-relaxed"
+                placeholder="Write your response to the user or internal resolution notes..."
                 value={replyMessage}
                 onChange={(event) => setReplyMessage(event.target.value)}
+                disabled={replyMutation.isPending}
+                required
               />
             </label>
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 pt-2">
               <button
-                className="h-11 flex-1 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 hover:bg-slate-50"
+                className="h-10 sm:h-11 flex-1 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
                 type="button"
                 onClick={closeReply}
+                disabled={replyMutation.isPending}
               >
                 Cancel
               </button>
               <button
-                className="h-11 flex-1 rounded-xl bg-[#f97316] text-sm font-semibold text-white hover:opacity-95"
+                className="h-10 sm:h-11 flex-1 rounded-xl bg-[#f97316] text-xs sm:text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60 shadow-xs transition-colors flex items-center justify-center gap-2"
                 type="submit"
+                disabled={replyMutation.isPending || !replyMessage.trim()}
               >
-                Send Reply
+                {replyMutation.isPending ? (
+                  <>
+                    <span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <span>Send Reply</span>
+                )}
               </button>
             </div>
           </form>
         )}
       </Modal>
-
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl">
-          {toastMessage}
-        </div>
-      )}
     </div>
   );
 }
