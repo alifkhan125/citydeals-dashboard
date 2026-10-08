@@ -1,63 +1,162 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { apiClient } from "@/api/client";
 
-const targets = [
-  "All users",
-  "Custom users",
-  "Kendall users",
-  "Miami Lakes users",
-  "Saved coupon users",
-  "Birthday users",
+interface AreaOption {
+  id: string;
+  name: string;
+  city: string;
+}
+
+interface UserOption {
+  id: string;
+  fullName: string;
+  email?: string;
+  phoneNumber?: string;
+}
+
+const birthdayOfferCategories = [
+  "Birthday Perks",
+  "Food",
+  "Cafe",
+  "Beauty",
+  "Shopping",
+  "Entertainment",
 ];
-
-const birthdayOfferCategories = ["Birthday Perks", "Food", "Cafe", "Beauty", "Shopping", "Entertainment"];
 
 export default function SendNotificationPage() {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
-  const [target, setTarget] = useState(targets[0]);
-  const [customUsers, setCustomUsers] = useState("");
-  const [sendMode, setSendMode] = useState("Send now");
+  const [targetType, setTargetType] = useState<"ALL" | "AREA" | "USER">("ALL");
+  const [selectedAreaId, setSelectedAreaId] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [sendMode, setSendMode] = useState<"NOW" | "SCHEDULED">("NOW");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [repeatMode, setRepeatMode] = useState<"NONE" | "DAILY" | "WEEKLY">("NONE");
+
+  // Options
+  const [areas, setAreas] = useState<AreaOption[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [sending, setSending] = useState(false);
+
+  // Birthday Perks
   const [birthdayPerksEnabled, setBirthdayPerksEnabled] = useState(true);
   const [birthdayCategory, setBirthdayCategory] = useState(birthdayOfferCategories[0]);
   const [birthdayLeadTime, setBirthdayLeadTime] = useState("On birthday");
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   function showToast(text: string) {
     setToastMessage(text);
-    setTimeout(() => setToastMessage(null), 2500);
+    setTimeout(() => setToastMessage(null), 3000);
   }
 
-  function handleSendNotification(event: React.FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    async function loadOptions() {
+      try {
+        const [areasData, usersData] = await Promise.all([
+          apiClient.get("/areas").catch(() => []),
+          apiClient.get("/admin/users").catch(() => []),
+        ]);
+
+        if (Array.isArray(areasData) && areasData.length > 0) {
+          const typedAreas = areasData as AreaOption[];
+          setAreas(typedAreas);
+          setSelectedAreaId(typedAreas[0].id);
+        }
+        if (Array.isArray(usersData) && usersData.length > 0) {
+          const typedUsers = usersData as UserOption[];
+          setUsers(typedUsers);
+          setSelectedUserId(typedUsers[0].id);
+        }
+      } catch (err) {
+        console.error("Failed to load notification target options:", err);
+      }
+    }
+
+    loadOptions();
+  }, []);
+
+  async function handleSendNotification(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!title.trim() || !message.trim()) return;
+    if (!title.trim()) {
+      showToast("Please enter a notification title");
+      return;
+    }
+    if (!message.trim()) {
+      showToast("Please enter a notification message");
+      return;
+    }
 
-    const targetLabel =
-      target === "Custom users" && customUsers.trim() ? customUsers.trim() : target;
+    if (targetType === "AREA" && !selectedAreaId) {
+      showToast("Please select a target area");
+      return;
+    }
 
-    setTitle("");
-    setMessage("");
-    setTarget(targets[0]);
-    setCustomUsers("");
-    setSendMode("Send now");
-    showToast(
-      sendMode === "Birthday trigger"
-        ? `Birthday notification scheduled for ${targetLabel}`
-        : `Notification sent to ${targetLabel}`
-    );
+    if (targetType === "USER" && !selectedUserId) {
+      showToast("Please select a target user");
+      return;
+    }
+
+    try {
+      setSending(true);
+
+      const payload = {
+        title: title.trim(),
+        body: message.trim(),
+        sendTo: targetType,
+        ...(targetType === "AREA" ? { areaId: selectedAreaId } : {}),
+        ...(targetType === "USER" ? { userId: selectedUserId } : {}),
+        ...(sendMode === "SCHEDULED" && scheduledAt
+          ? { scheduledAt: new Date(scheduledAt).toISOString() }
+          : {}),
+        repeat: repeatMode,
+      };
+
+      const res: any = await apiClient.post("/notifications/send", payload);
+
+      showToast(
+        `✓ Notification sent successfully to ${res?.recipients ?? 0} user${
+          res?.recipients === 1 ? "" : "s"
+        }!`
+      );
+
+      // Reset main inputs
+      setTitle("");
+      setMessage("");
+      setSendMode("NOW");
+      setScheduledAt("");
+      setRepeatMode("NONE");
+    } catch (err: any) {
+      console.error("Failed to send notification:", err);
+      const serverMsg =
+        err.response?.data?.message || err.message || "Failed to send notification";
+      showToast(Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
     <div className="w-full px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
       <section className="w-full rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="border-b border-slate-100 pb-4">
-          <h1 className="text-2xl font-semibold leading-8 text-slate-900">
-            Send Notifications
-          </h1>
-          <p className="mt-1 text-sm leading-5 text-slate-500">
-            Send announcements to all users, custom users, area users or birthday users.
-          </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4">
+          <div>
+            <h1 className="text-2xl font-semibold leading-8 text-slate-900">
+              Send Notifications
+            </h1>
+            <p className="mt-1 text-sm leading-5 text-slate-500">
+              Broadcast announcements to all app users, specific city areas or individual accounts.
+            </p>
+          </div>
+          <Link
+            href="/notifications"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            📋 View Notification History
+          </Link>
         </div>
 
         <form
@@ -65,75 +164,159 @@ export default function SendNotificationPage() {
           onSubmit={handleSendNotification}
         >
           <div className="grid gap-4 md:grid-cols-[1fr_220px_220px]">
+            {/* Title */}
             <label className="grid gap-1">
-              <span className="text-sm font-medium text-slate-900">Notification title</span>
+              <span className="text-sm font-medium text-slate-900">
+                Notification title <span className="text-red-500">*</span>
+              </span>
               <input
+                required
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
-                placeholder="Weekend deals are live"
+                placeholder="e.g. Weekend Deals are live! 🍕"
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
               />
             </label>
 
+            {/* Target Audience */}
             <label className="grid gap-1">
-              <span className="text-sm font-medium text-slate-900">Send to</span>
+              <span className="text-sm font-medium text-slate-900">Audience</span>
               <select
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400"
-                value={target}
-                onChange={(event) => setTarget(event.target.value)}
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400 cursor-pointer"
+                value={targetType}
+                onChange={(event) =>
+                  setTargetType(event.target.value as "ALL" | "AREA" | "USER")
+                }
               >
-                {targets.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
+                <option value="ALL">All App Users</option>
+                <option value="AREA">Specific Area</option>
+                <option value="USER">Specific User</option>
               </select>
             </label>
 
+            {/* Trigger Mode */}
             <label className="grid gap-1">
               <span className="text-sm font-medium text-slate-900">Trigger</span>
               <select
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400"
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400 cursor-pointer"
                 value={sendMode}
-                onChange={(event) => setSendMode(event.target.value)}
+                onChange={(event) => setSendMode(event.target.value as "NOW" | "SCHEDULED")}
               >
-                <option value="Send now">Send now</option>
-                <option value="Schedule later">Schedule later</option>
-                <option value="Birthday trigger">Birthday trigger</option>
+                <option value="NOW">Send now</option>
+                <option value="SCHEDULED">Schedule for later</option>
               </select>
             </label>
           </div>
 
-          {target === "Custom users" && (
-            <label className="mt-4 grid gap-1">
-              <span className="text-sm font-medium text-slate-900">Custom users</span>
-              <input
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
-                placeholder="Enter user emails or IDs separated by commas"
-                value={customUsers}
-                onChange={(event) => setCustomUsers(event.target.value)}
-              />
-            </label>
+          {/* Conditional Target Selectors */}
+          {targetType === "AREA" && (
+            <div className="mt-4">
+              <label className="grid gap-1">
+                <span className="text-sm font-medium text-slate-900">
+                  Target Area <span className="text-red-500">*</span>
+                </span>
+                <select
+                  required
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400 cursor-pointer"
+                  value={selectedAreaId}
+                  onChange={(e) => setSelectedAreaId(e.target.value)}
+                >
+                  {areas.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.city})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           )}
 
+          {targetType === "USER" && (
+            <div className="mt-4">
+              <label className="grid gap-1">
+                <span className="text-sm font-medium text-slate-900">
+                  Select User <span className="text-red-500">*</span>
+                </span>
+                <select
+                  required
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400 cursor-pointer"
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                >
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.fullName || "User"} ({u.email || u.phoneNumber || u.id})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          {/* Conditional Schedule Fields */}
+          {sendMode === "SCHEDULED" && (
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-1">
+                <span className="text-sm font-medium text-slate-900">
+                  Scheduled Date & Time <span className="text-red-500">*</span>
+                </span>
+                <input
+                  type="datetime-local"
+                  required
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                />
+              </label>
+
+              <label className="grid gap-1">
+                <span className="text-sm font-medium text-slate-900">Repeat</span>
+                <select
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-900 outline-none transition-colors focus:border-orange-400 cursor-pointer"
+                  value={repeatMode}
+                  onChange={(e) =>
+                    setRepeatMode(e.target.value as "NONE" | "DAILY" | "WEEKLY")
+                  }
+                >
+                  <option value="NONE">Do not repeat</option>
+                  <option value="DAILY">Repeat daily</option>
+                  <option value="WEEKLY">Repeat weekly</option>
+                </select>
+              </label>
+            </div>
+          )}
+
+          {/* Message Body */}
           <label className="mt-4 grid gap-1">
-            <span className="text-sm font-medium text-slate-900">Message</span>
+            <span className="text-sm font-medium text-slate-900">
+              Message <span className="text-red-500">*</span>
+            </span>
             <textarea
+              required
               className="min-h-24 resize-none rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
-              placeholder="Write the notification users will receive..."
+              placeholder="Write the message that users will receive on their mobile devices..."
               value={message}
               onChange={(event) => setMessage(event.target.value)}
             />
           </label>
 
           <button
-            className="mt-4 h-11 rounded-xl bg-[#f97316] px-5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95"
+            className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#f97316] px-5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-95 disabled:opacity-50 cursor-pointer"
             type="submit"
+            disabled={sending}
           >
-            Send Notification
+            {sending ? (
+              <>
+                <div className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Sending...
+              </>
+            ) : (
+              "🚀 Send Notification"
+            )}
           </button>
         </form>
 
+        {/* Birthday Perks Section */}
         <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -145,8 +328,8 @@ export default function SendNotificationPage() {
             <button
               className={
                 birthdayPerksEnabled
-                  ? "h-10 rounded-xl bg-[#f97316] px-4 text-sm font-medium text-white"
-                  : "h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700"
+                  ? "h-10 rounded-xl bg-[#f97316] px-4 text-sm font-medium text-white cursor-pointer"
+                  : "h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 cursor-pointer"
               }
               type="button"
               onClick={() => setBirthdayPerksEnabled((current) => !current)}
@@ -159,7 +342,7 @@ export default function SendNotificationPage() {
             <label className="grid gap-1">
               <span className="text-sm font-medium text-slate-900">Perk category</span>
               <select
-                className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none focus:border-orange-400"
+                className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none focus:border-orange-400 cursor-pointer"
                 value={birthdayCategory}
                 onChange={(event) => setBirthdayCategory(event.target.value)}
               >
@@ -174,7 +357,7 @@ export default function SendNotificationPage() {
             <label className="grid gap-1">
               <span className="text-sm font-medium text-slate-900">Send time</span>
               <select
-                className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none focus:border-orange-400"
+                className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none focus:border-orange-400 cursor-pointer"
                 value={birthdayLeadTime}
                 onChange={(event) => setBirthdayLeadTime(event.target.value)}
               >
@@ -185,7 +368,7 @@ export default function SendNotificationPage() {
             </label>
 
             <button
-              className="mt-6 h-11 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-800 hover:bg-slate-100 md:mt-auto"
+              className="mt-6 h-11 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-800 hover:bg-slate-100 md:mt-auto cursor-pointer"
               type="button"
               onClick={() =>
                 showToast(`Birthday perks saved: ${birthdayCategory}, ${birthdayLeadTime}`)
@@ -198,7 +381,7 @@ export default function SendNotificationPage() {
       </section>
 
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl">
+        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900/90 px-4 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur animate-in fade-in slide-in-from-bottom-3">
           {toastMessage}
         </div>
       )}
