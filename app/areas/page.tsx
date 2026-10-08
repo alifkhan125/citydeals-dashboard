@@ -34,6 +34,9 @@ export default function AreasPage() {
   const [areaSlug, setAreaSlug] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("Madrid");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   async function fetchAreas() {
     try {
@@ -61,7 +64,7 @@ export default function AreasPage() {
 
   const handleAreaNameChange = (value: string) => {
     setAreaName(value);
-    if (!editingArea && !areaSlug) {
+    if (!editingArea && !isSlugManuallyEdited) {
       setAreaSlug(
         value
           .trim()
@@ -72,13 +75,25 @@ export default function AreasPage() {
     }
   };
 
+  const handleAreaSlugChange = (value: string) => {
+    setIsSlugManuallyEdited(true);
+    setAreaSlug(
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "")
+    );
+  };
+
   const handleOpenAddArea = () => {
     setOpenActionSlug(null);
     setEditingArea(null);
     setAreaName("");
     setAreaSlug("");
+    setIsSlugManuallyEdited(false);
     setCity("");
     setState("Madrid");
+    setLatitude("");
+    setLongitude("");
     setIsAddAreaOpen(true);
   };
 
@@ -87,8 +102,11 @@ export default function AreasPage() {
     setEditingArea(area);
     setAreaName(area.name);
     setAreaSlug(area.slug);
+    setIsSlugManuallyEdited(true);
     setCity(area.city);
     setState(area.state);
+    setLatitude(area.latitude != null ? String(area.latitude) : "");
+    setLongitude(area.longitude != null ? String(area.longitude) : "");
     setIsAddAreaOpen(true);
   };
 
@@ -97,14 +115,29 @@ export default function AreasPage() {
     setEditingArea(null);
     setAreaName("");
     setAreaSlug("");
+    setIsSlugManuallyEdited(false);
     setCity("");
     setState("Madrid");
+    setLatitude("");
+    setLongitude("");
   };
 
   const handleSaveArea = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!areaName.trim() || !city.trim()) {
       showToast("Area name and City are required");
+      return;
+    }
+
+    const parsedLat = latitude.trim() !== "" ? parseFloat(latitude.trim()) : undefined;
+    const parsedLon = longitude.trim() !== "" ? parseFloat(longitude.trim()) : undefined;
+
+    if (parsedLat !== undefined && isNaN(parsedLat)) {
+      showToast("Please enter a valid Latitude number");
+      return;
+    }
+    if (parsedLon !== undefined && isNaN(parsedLon)) {
+      showToast("Please enter a valid Longitude number");
       return;
     }
 
@@ -121,6 +154,8 @@ export default function AreasPage() {
       slug,
       city: city.trim(),
       state: state.trim().toUpperCase(),
+      ...(parsedLat !== undefined && !isNaN(parsedLat) ? { latitude: parsedLat } : {}),
+      ...(parsedLon !== undefined && !isNaN(parsedLon) ? { longitude: parsedLon } : {}),
     };
 
     try {
@@ -374,7 +409,7 @@ export default function AreasPage() {
                   className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
                   placeholder="e.g. kendall"
                   value={areaSlug}
-                  onChange={(event) => setAreaSlug(event.target.value)}
+                  onChange={(event) => handleAreaSlugChange(event.target.value)}
                 />
               </label>
 
@@ -400,6 +435,35 @@ export default function AreasPage() {
                   />
                 </label>
               </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="grid gap-1">
+                  <span className="text-sm leading-5 text-slate-900">Center Latitude</span>
+                  <input
+                    type="number"
+                    step="any"
+                    className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
+                    placeholder="e.g. 40.4168"
+                    value={latitude}
+                    onChange={(event) => setLatitude(event.target.value)}
+                  />
+                </label>
+
+                <label className="grid gap-1">
+                  <span className="text-sm leading-5 text-slate-900">Center Longitude</span>
+                  <input
+                    type="number"
+                    step="any"
+                    className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
+                    placeholder="e.g. -3.7038"
+                    value={longitude}
+                    onChange={(event) => setLongitude(event.target.value)}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-slate-500 -mt-1">
+                📍 এই এরিয়ার কেন্দ্রীয় স্থানাঙ্ক। নতুন কোনো ব্যবসায় নিজস্ব স্থানাঙ্ক না দিলে স্বয়ংক্রিয়ভাবে এটি ব্যবহৃত হবে।
+              </p>
             </div>
           </div>
 

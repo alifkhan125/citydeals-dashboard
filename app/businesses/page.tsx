@@ -51,6 +51,8 @@ interface AreaOption {
   id: string;
   name: string;
   city: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
 }
 
 export default function BusinessesPage() {
@@ -88,6 +90,8 @@ export default function BusinessesPage() {
   const [instagramUrl, setInstagramUrl] = useState("");
   const [facebookUrl, setFacebookUrl] = useState("");
   const [tiktokUrl, setTikTokUrl] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
 
   async function fetchData() {
     try {
@@ -166,13 +170,28 @@ export default function BusinessesPage() {
     setLogoPreview(URL.createObjectURL(file));
   }
 
+  function handleAreaChange(newAreaId: string) {
+    setAreaId(newAreaId);
+    const selectedArea = areas.find((a) => a.id === newAreaId);
+    if (selectedArea) {
+      if (selectedArea.latitude != null && String(selectedArea.latitude).trim() !== "") {
+        setLatitude(String(selectedArea.latitude));
+      }
+      if (selectedArea.longitude != null && String(selectedArea.longitude).trim() !== "") {
+        setLongitude(String(selectedArea.longitude));
+      }
+    }
+  }
+
   function handleOpenAddBusiness() {
     setOpenActionId(null);
     setEditingBusiness(null);
     setName("");
     setTitleText("");
     setCategoryId("");
-    setAreaId(areas[0]?.id || "");
+    const defaultArea = areas[0];
+    const defaultAreaId = defaultArea?.id || "";
+    setAreaId(defaultAreaId);
     setAddress("");
     setPhone("");
     setEmail("");
@@ -181,6 +200,12 @@ export default function BusinessesPage() {
     setInstagramUrl("");
     setFacebookUrl("");
     setTikTokUrl("");
+    setLatitude(
+      defaultArea?.latitude != null ? String(defaultArea.latitude) : ""
+    );
+    setLongitude(
+      defaultArea?.longitude != null ? String(defaultArea.longitude) : ""
+    );
     setLogoFile(null);
     setLogoPreview(null);
     setIsDrawerOpen(true);
@@ -192,8 +217,26 @@ export default function BusinessesPage() {
     setName(business.name || "");
     setTitleText(business.titleText || "");
     setCategoryId(business.categoryId || "");
-    setAreaId(business.areaId || areas[0]?.id || "");
+    const selectedAreaId = business.areaId || areas[0]?.id || "";
+    setAreaId(selectedAreaId);
     setAddress(business.address || "");
+
+    const matchedArea = areas.find((a) => a.id === selectedAreaId);
+    const effectiveLat =
+      business.latitude != null && String(business.latitude).trim() !== ""
+        ? String(business.latitude)
+        : matchedArea?.latitude != null
+        ? String(matchedArea.latitude)
+        : "";
+    const effectiveLon =
+      business.longitude != null && String(business.longitude).trim() !== ""
+        ? String(business.longitude)
+        : matchedArea?.longitude != null
+        ? String(matchedArea.longitude)
+        : "";
+
+    setLatitude(effectiveLat);
+    setLongitude(effectiveLon);
     setPhone(business.phone || "");
     setEmail(business.email || "");
     setStatus(business.status || "ACTIVE");
@@ -266,6 +309,18 @@ export default function BusinessesPage() {
       return;
     }
 
+    const parsedLat = latitude.trim() !== "" ? parseFloat(latitude.trim()) : undefined;
+    const parsedLon = longitude.trim() !== "" ? parseFloat(longitude.trim()) : undefined;
+
+    if (parsedLat !== undefined && isNaN(parsedLat)) {
+      showToast("Please enter a valid Latitude number");
+      return;
+    }
+    if (parsedLon !== undefined && isNaN(parsedLon)) {
+      showToast("Please enter a valid Longitude number");
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -284,6 +339,8 @@ export default function BusinessesPage() {
         categoryId: categoryId || undefined,
         areaId: areaId || areas[0]?.id || undefined,
         address: address.trim(),
+        latitude: parsedLat !== undefined && !isNaN(parsedLat) ? parsedLat : undefined,
+        longitude: parsedLon !== undefined && !isNaN(parsedLon) ? parsedLon : undefined,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
         websiteUrl: websiteUrl.trim() || undefined,
@@ -503,6 +560,11 @@ export default function BusinessesPage() {
                     <div>
                       <span className="block text-xs font-medium text-slate-500">Address</span>
                       <p className="mt-0.5 text-slate-900">{location.address || "—"}</p>
+                      {location.latitude != null && location.longitude != null && (
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          📍 {Number(location.latitude).toFixed(4)}, {Number(location.longitude).toFixed(4)}
+                        </p>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded-xl bg-slate-50 p-3">
@@ -582,9 +644,16 @@ export default function BusinessesPage() {
                   </div>
 
                   {/* Address */}
-                  <p className="truncate px-3 text-sm leading-5 text-slate-900">
-                    {location.address || "—"}
-                  </p>
+                  <div className="min-w-0 px-3">
+                    <p className="truncate text-sm leading-5 text-slate-900">
+                      {location.address || "—"}
+                    </p>
+                    {location.latitude != null && location.longitude != null && (
+                      <span className="block truncate text-[11px] text-slate-400">
+                        📍 {Number(location.latitude).toFixed(4)}, {Number(location.longitude).toFixed(4)}
+                      </span>
+                    )}
+                  </div>
 
                   {/* Category */}
                   <div className="px-3">
@@ -774,7 +843,7 @@ export default function BusinessesPage() {
                 <span className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
                   <select
                     value={areaId}
-                    onChange={(e) => setAreaId(e.target.value)}
+                    onChange={(e) => handleAreaChange(e.target.value)}
                     required
                     className="w-full min-w-0 flex-1 truncate bg-transparent outline-none cursor-pointer"
                   >
@@ -803,6 +872,61 @@ export default function BusinessesPage() {
                   />
                 </span>
               </label>
+
+              {/* Coordinates (Latitude & Longitude) */}
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">
+                  Latitude (অক্ষাংশ)
+                </span>
+                <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <input
+                    type="number"
+                    step="any"
+                    value={latitude}
+                    onChange={(e) => setLatitude(e.target.value)}
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                    placeholder="Auto-filled from Area"
+                  />
+                </span>
+              </label>
+
+              <label className="grid min-w-0 gap-1 md:col-span-6">
+                <span className="text-xs font-medium text-slate-700">
+                  Longitude (দ্রাঘিমাংশ)
+                </span>
+                <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
+                  <input
+                    type="number"
+                    step="any"
+                    value={longitude}
+                    onChange={(e) => setLongitude(e.target.value)}
+                    className="w-full min-w-0 flex-1 truncate bg-transparent outline-none placeholder:text-slate-400"
+                    placeholder="Auto-filled from Area"
+                  />
+                </span>
+              </label>
+
+              <div className="md:col-span-12 -mt-1 mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500">
+                <p>
+                  ⚡ Area সিলেক্ট করলেই অক্ষাংশ ও দ্রাঘিমাংশ স্বয়ংক্রিয়ভাবে বসে যাবে। প্রয়োজন হলে নির্দিষ্ট দোকানের লোকেশন অনুযায়ী পরিবর্তন করতে পারেন।
+                </p>
+                {areaId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selectedArea = areas.find((a) => a.id === areaId);
+                      if (selectedArea) {
+                        setLatitude(selectedArea.latitude != null ? String(selectedArea.latitude) : "");
+                        setLongitude(selectedArea.longitude != null ? String(selectedArea.longitude) : "");
+                        showToast("Area এর স্থানাঙ্ক দিয়ে অটো-ফিল করা হয়েছে");
+                      }
+                    }}
+                    className="shrink-0 font-medium text-[#f97316] hover:underline cursor-pointer"
+                  >
+                    🔄 Reset to Area
+                  </button>
+                )}
+              </div>
 
               {/* Phone & Email */}
               <label className="grid min-w-0 gap-1 md:col-span-6">
