@@ -5,6 +5,12 @@ export interface DashboardUser {
   fullName?: string;
   email: string;
   role: string;
+  phoneNumber?: string | null;
+  profilePictureUrl?: string | null;
+  dateOfBirth?: string | null;
+  preferredLanguage?: string;
+  status?: string;
+  staffRoleKey?: string;
 }
 
 export interface AuthTokens {
@@ -32,4 +38,10 @@ export const authApi = {
     confirmPassword: string;
   }) => apiClient.post<unknown, AuthResponse>("/auth/reset-password", payload),
   me: () => apiClient.get<unknown, DashboardUser>("/auth/me"),
+  updateMe: (payload: {
+    fullName?: string;
+    phoneNumber?: string;
+    profilePictureUrl?: string;
+    dateOfBirth?: string;
+  }) => apiClient.patch<unknown, DashboardUser>("/me", payload),
 };

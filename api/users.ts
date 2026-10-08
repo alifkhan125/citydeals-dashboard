@@ -25,10 +25,11 @@ interface ApiUserRecord {
 }
 
 function mapUser(record: ApiUserRecord): AppUser {
+  const fallbackName = record.email?.split("@")[0] || record.phoneNumber || "Unknown User";
   return {
     id: record.id,
-    name: record.fullName || "Unknown",
-    email: record.email || "",
+    name: record.fullName?.trim() || fallbackName,
+    email: record.email || "No email",
     phone: record.phoneNumber || "Not provided",
     joined: new Date(record.createdAt).toLocaleDateString("en-US", {
       day: "numeric",

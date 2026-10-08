@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useAuthStore } from "@/store/useAuthStore";
 
 const assetBase = "/assets/dashboard/";
 
@@ -34,7 +35,13 @@ type HeaderProps = {
 
 export default function Header({ onMenuClick }: HeaderProps) {
   const pathname = usePathname();
+  const user = useAuthStore((state) => state.user);
   const [showNotifications, setShowNotifications] = useState(false);
+  const profileImage =
+    user?.profilePictureUrl ||
+    (user?.fullName
+      ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=ea580c&color=ffffff&bold=true`
+      : `${assetBase}imgAdminAvatarNew.png`);
 
   const getPageTitle = () => {
     if (!pathname) return "Dashboard";
@@ -145,16 +152,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg border border-[#0c4a6e] p-0.5 sm:size-[37px]">
             <Image
               className="size-full rounded-md object-cover"
-              src={`${assetBase}imgAdminAvatarNew.png`}
+              src={profileImage}
               alt=""
               width={33}
               height={33}
+              unoptimized={profileImage.startsWith("http")}
             />
           </span>
           <span className="hidden min-w-0 sm:block">
-            <strong className="block text-base font-normal leading-6 text-slate-900">Admin</strong>
+            <strong className="block text-base font-normal leading-6 text-slate-900">
+              {user?.fullName || "Admin"}
+            </strong>
             <small className="block truncate text-sm leading-5 text-slate-600/65">
-              jack.will95@gmail.com
+              {user?.email || "admin@citydeals"}
             </small>
           </span>
         </Link>

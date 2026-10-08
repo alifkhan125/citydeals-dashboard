@@ -1,9 +1,10 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function DashboardShell({
   children,
@@ -12,6 +13,11 @@ export default function DashboardShell({
 }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const hydrateFromStorage = useAuthStore((state) => state.hydrateFromStorage);
+
+  useEffect(() => {
+    hydrateFromStorage();
+  }, [hydrateFromStorage]);
 
   // If on root sign-in page, render clean without dashboard layout
   if (pathname === "/" || pathname === "/signin") {

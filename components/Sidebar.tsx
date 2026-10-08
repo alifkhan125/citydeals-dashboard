@@ -7,6 +7,8 @@ import { toast } from "./Toast";
 
 const assetBase = "/assets/dashboard/";
 
+import { usePermissions } from "@/hooks/usePermissions";
+
 const menuSections = [
   {
     title: "Main",
@@ -16,14 +18,14 @@ const menuSections = [
     title: "Directory",
     items: [
       { label: "Areas", icon: "imgMapPin.svg", href: "/areas" },
-      { label: "Businesses", icon: "imgShop.svg", href: "/businesses" },
-      { label: "Categories", icon: "imgTag2.svg", href: "/categories" },
+      { label: "Businesses", icon: "imgShop.svg", href: "/businesses", requiredPermission: "manage-business-profiles" },
+      { label: "Categories", icon: "imgTag2.svg", href: "/categories", requiredPermission: "manage-coupon-categories" },
     ],
   },
   {
     title: "Coupons",
     items: [
-      { label: "Coupons", icon: "imgTicket.svg", href: "/coupons" },
+      { label: "Coupons", icon: "imgTicket.svg", href: "/coupons", requiredPermission: "create-edit-coupons" },
       { label: "Redemptions", icon: "imgTicketExpired.svg", href: "/redemptions" },
     ],
   },
@@ -37,15 +39,15 @@ const menuSections = [
   {
     title: "App Control",
     items: [
-      { label: "Legal Pages", icon: "imgTicket.svg", href: "/legal-pages" },
+      { label: "Legal Pages", icon: "imgTicket.svg", href: "/legal-pages", requiredPermission: "edit-app-pages" },
     ],
   },
   {
     title: "People",
     items: [
-      { label: "Users", icon: "imgUser.svg", href: "/users" },
-      { label: "Staff accounts", icon: "imgUserSquare.svg", href: "/staff" },
-      { label: "Roles & Permissions", icon: "imgUserOctagon.svg", href: "/roles" },
+      { label: "Users", icon: "imgUser.svg", href: "/users", requiredPermission: "manage-registered-users" },
+      { label: "Staff accounts", icon: "imgUserSquare.svg", href: "/staff", requiredPermission: "manage-staff-accounts" },
+      { label: "Roles & Permissions", icon: "imgUserOctagon.svg", href: "/roles", requiredPermission: "manage-staff-accounts" },
     ],
   },
 ];
@@ -58,6 +60,7 @@ type SidebarProps = {
 
 export default function Sidebar({ activeItem, onNavigate, className = "" }: SidebarProps) {
   const pathname = usePathname();
+  const { can, isLoading } = usePermissions();
 
   const isItemActive = (item: { label: string; href: string }) => {
     if (activeItem) return item.label === activeItem;
@@ -65,6 +68,11 @@ export default function Sidebar({ activeItem, onNavigate, className = "" }: Side
     if (item.href === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(item.href) || pathname.startsWith(`/dashboard${item.href}`);
   };
+
+  const filteredSections = menuSections.map(section => ({
+    ...section,
+    items: section.items.filter(item => !item.requiredPermission || can(item.requiredPermission))
+  })).filter(section => section.items.length > 0);
 
   return (
     <aside className={`flex h-svh flex-col overflow-y-auto border-r border-[#eef3f8] bg-white shadow-[0_1px_2px_-1px_rgba(12,74,110,0.16)] lg:sticky lg:top-0 lg:rounded-br-2xl ${className}`}>
@@ -80,7 +88,7 @@ export default function Sidebar({ activeItem, onNavigate, className = "" }: Side
       </div>
 
       <nav className="flex-1 px-4 pb-4 pt-5" aria-label="Dashboard navigation">
-        {menuSections.map((section) => (
+        {!isLoading && filteredSections.map((section) => (
           <section className="mb-4" key={section.title}>
             <h2 className="mb-2 px-4 text-xs font-medium leading-4 text-[#315576]">
               {section.title}

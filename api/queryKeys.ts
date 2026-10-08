@@ -3,6 +3,10 @@ export const queryKeys = {
     all: ["dashboard"] as const,
     overview: ["dashboard", "overview"] as const,
   },
+  search: {
+    all: ["search"] as const,
+    query: (q: string) => ["search", q] as const,
+  },
   auth: {
     me: ["auth", "me"] as const,
   },

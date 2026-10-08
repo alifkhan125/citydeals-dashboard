@@ -7,6 +7,10 @@ import Modal from "@/components/Modal";
 import { toast } from "@/components/Toast";
 import { useUpdateUserStatus, useUsers } from "@/hooks/useUsers";
 
+function getUserInitial(user?: Pick<AppUser, "name" | "email"> | null) {
+  return (user?.name?.trim()?.[0] || user?.email?.trim()?.[0] || "U").toUpperCase();
+}
+
 export default function UsersPage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
@@ -69,7 +73,7 @@ export default function UsersPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-3">
                     <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#0c4a6e] text-sm font-semibold text-white">
-                      {user.name[0]}
+                      {getUserInitial(user)}
                     </div>
                     <div className="min-w-0">
                       <strong className="block truncate text-sm font-medium leading-5 text-slate-900">
@@ -345,7 +349,7 @@ export default function UsersPage() {
             {/* User Header Summary Card */}
             <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="grid size-14 place-items-center rounded-2xl bg-[#0c4a6e] text-xl font-semibold text-white">
-                {selectedUser.name[0]}
+                {getUserInitial(selectedUser)}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
