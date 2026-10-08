@@ -1,48 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { apiClient } from "@/api/client";
-
-export interface RedemptionItem {
-  id: string;
-  createdAt: string;
-  user: {
-    id: string;
-    fullName: string;
-    email?: string | null;
-    phoneNumber?: string | null;
-  };
-  coupon: {
-    id: string;
-    title: string;
-    couponCode?: string | null;
-    imageUrl?: string | null;
-    area?: {
-      id: string;
-      name: string;
-      city: string;
-    };
-    merchant?: {
-      id: string;
-      name: string;
-      logoUrl?: string | null;
-    };
-  };
-}
-
-interface AreaOption {
-  id: string;
-  name: string;
-  city: string;
-}
-
-interface RedemptionsResponse {
-  items: RedemptionItem[];
-  total: number;
-  todayCount: number;
-  thisWeekCount: number;
-  thisMonthCount: number;
-}
+import { useState, useMemo } from "react";
+import { emptyRedemptions } from "@/api/redemptions";
+import { useRedemptionAreas, useRedemptions } from "@/hooks/useRedemptions";
 
 function formatRedeemedDate(dateString: string): string {
   try {
@@ -77,61 +37,12 @@ function formatRedeemedDate(dateString: string): string {
 }
 
 export default function RedemptionsPage() {
-  const [items, setItems] = useState<RedemptionItem[]>([]);
-  const [areas, setAreas] = useState<AreaOption[]>([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    todayCount: 0,
-    thisWeekCount: 0,
-    thisMonthCount: 0,
-  });
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedArea, setSelectedArea] = useState("ALL");
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  function showToast(message: string) {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), 2500);
-  }
-
-  async function fetchRedemptions() {
-    try {
-      setLoading(true);
-      const areaParam = selectedArea !== "ALL" ? `?areaId=${selectedArea}` : "";
-      const [redemptionsData, areasData] = await Promise.all([
-        apiClient.get(`/admin/redemptions${areaParam}`).catch((err) => {
-          console.error("Failed to load redemptions:", err);
-          return null;
-        }),
-        apiClient.get("/areas").catch(() => []),
-      ]);
-
-      if (redemptionsData) {
-        const res = redemptionsData as unknown as RedemptionsResponse;
-        setItems(res.items || []);
-        setStats({
-          total: res.total ?? 0,
-          todayCount: res.todayCount ?? 0,
-          thisWeekCount: res.thisWeekCount ?? 0,
-          thisMonthCount: res.thisMonthCount ?? 0,
-        });
-      }
-
-      if (Array.isArray(areasData)) {
-        setAreas(areasData as unknown as AreaOption[]);
-      }
-    } catch (err) {
-      console.error("Error fetching redemptions data:", err);
-      showToast("Failed to load redemptions");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchRedemptions();
-  }, [selectedArea]);
+  const { data: redemptions = emptyRedemptions, isLoading: loading, refetch } = useRedemptions(selectedArea);
+  const { data: areas = [] } = useRedemptionAreas();
+  const items = redemptions.items || [];
+  const stats = redemptions;
 
   // Client-side search filtering
   const filteredItems = useMemo(() => {
@@ -160,13 +71,6 @@ export default function RedemptionsPage() {
 
   return (
     <div className="w-full px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900/90 px-4 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur transition-all animate-in fade-in slide-in-from-bottom-3">
-          {toastMessage}
-        </div>
-      )}
-
       <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -176,7 +80,7 @@ export default function RedemptionsPage() {
             </p>
           </div>
           <button
-            onClick={fetchRedemptions}
+            onClick={() => refetch()}
             disabled={loading}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 cursor-pointer"
           >

@@ -1,28 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { apiClient } from "@/api/client";
-
-interface NotificationRecord {
-  id: string;
-  title: string;
-  body: string;
-  data?: {
-    sendTo?: string;
-    areaId?: string;
-    scheduledAt?: string;
-    repeat?: string;
-  };
-  readAt: string | null;
-  createdAt: string;
-  user?: {
-    id: string;
-    fullName: string;
-    email?: string;
-    area?: { id: string; name: string };
-  };
-}
+import { useNotificationHistory } from "@/hooks/useNotifications";
 
 function formatRelativeTime(dateString: string): string {
   try {
@@ -41,41 +21,9 @@ function formatRelativeTime(dateString: string): string {
 }
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: notifications = [], isLoading: loading, refetch } = useNotificationHistory();
   const [filter, setFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  function showToast(text: string) {
-    setToastMessage(text);
-    setTimeout(() => setToastMessage(null), 2500);
-  }
-
-  async function fetchNotifications() {
-    try {
-      setLoading(true);
-      const res: any = await apiClient
-        .get("/notifications/admin/history")
-        .catch((err) => {
-          console.error("Failed to load notifications history:", err);
-          return { items: [] };
-        });
-
-      if (res && Array.isArray(res.items)) {
-        setNotifications(res.items);
-      }
-    } catch (err) {
-      console.error("Error loading notifications:", err);
-      showToast("Failed to load notifications");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
 
   const filteredNotifications = useMemo(() => {
     return notifications.filter((item) => {
@@ -117,7 +65,7 @@ export default function NotificationsPage() {
               + Send New Notification
             </Link>
             <button
-              onClick={fetchNotifications}
+              onClick={() => refetch()}
               disabled={loading}
               className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer"
             >
@@ -236,12 +184,6 @@ export default function NotificationsPage() {
           </div>
         )}
       </section>
-
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900/90 px-4 py-2.5 text-xs font-medium text-white shadow-xl backdrop-blur animate-in fade-in slide-in-from-bottom-3">
-          {toastMessage}
-        </div>
-      )}
     </div>
   );
 }

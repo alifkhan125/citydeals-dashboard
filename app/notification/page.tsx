@@ -1,21 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { AxiosError } from "axios";
 import Link from "next/link";
-import { apiClient } from "@/api/client";
-
-interface AreaOption {
-  id: string;
-  name: string;
-  city: string;
-}
-
-interface UserOption {
-  id: string;
-  fullName: string;
-  email?: string;
-  phoneNumber?: string;
-}
+import {
+  useNotificationAreas,
+  useNotificationUsers,
+  useSendNotification,
+} from "@/hooks/useNotifications";
 
 const birthdayOfferCategories = [
   "Birthday Perks",
@@ -36,10 +28,10 @@ export default function SendNotificationPage() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [repeatMode, setRepeatMode] = useState<"NONE" | "DAILY" | "WEEKLY">("NONE");
 
-  // Options
-  const [areas, setAreas] = useState<AreaOption[]>([]);
-  const [users, setUsers] = useState<UserOption[]>([]);
-  const [sending, setSending] = useState(false);
+  const { data: areas = [] } = useNotificationAreas();
+  const { data: users = [] } = useNotificationUsers();
+  const sendNotificationMutation = useSendNotification();
+  const sending = sendNotificationMutation.isPending;
 
   // Birthday Perks
   const [birthdayPerksEnabled, setBirthdayPerksEnabled] = useState(true);
@@ -54,30 +46,23 @@ export default function SendNotificationPage() {
   }
 
   useEffect(() => {
-    async function loadOptions() {
-      try {
-        const [areasData, usersData] = await Promise.all([
-          apiClient.get("/areas").catch(() => []),
-          apiClient.get("/admin/users").catch(() => []),
-        ]);
+    if (!selectedAreaId && areas[0]?.id) setSelectedAreaId(areas[0].id);
+  }, [areas, selectedAreaId]);
 
-        if (Array.isArray(areasData) && areasData.length > 0) {
-          const typedAreas = areasData as AreaOption[];
-          setAreas(typedAreas);
-          setSelectedAreaId(typedAreas[0].id);
-        }
-        if (Array.isArray(usersData) && usersData.length > 0) {
-          const typedUsers = usersData as UserOption[];
-          setUsers(typedUsers);
-          setSelectedUserId(typedUsers[0].id);
-        }
-      } catch (err) {
-        console.error("Failed to load notification target options:", err);
-      }
+  useEffect(() => {
+    if (!selectedUserId && users[0]?.id) setSelectedUserId(users[0].id);
+  }, [users, selectedUserId]);
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof AxiosError) {
+      const message = error.response?.data?.message;
+      if (Array.isArray(message)) return message.join(", ");
+      if (typeof message === "string") return message;
+      if (typeof error.response?.data?.error === "string") return error.response.data.error;
     }
-
-    loadOptions();
-  }, []);
+    if (error instanceof Error) return error.message;
+    return fallback;
+  }
 
   async function handleSendNotification(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -101,8 +86,6 @@ export default function SendNotificationPage() {
     }
 
     try {
-      setSending(true);
-
       const payload = {
         title: title.trim(),
         body: message.trim(),
@@ -115,12 +98,15 @@ export default function SendNotificationPage() {
         repeat: repeatMode,
       };
 
-      const res: any = await apiClient.post("/notifications/send", payload);
+      const res = await sendNotificationMutation.mutateAsync(payload);
 
+      const recipientCount = res?.recipients ?? 0;
+      const pushSent = res?.push?.sent ?? 0;
+      const pushSkipped = res?.push?.skipped ?? 0;
       showToast(
-        `✓ Notification sent successfully to ${res?.recipients ?? 0} user${
-          res?.recipients === 1 ? "" : "s"
-        }!`
+        `Notification saved for ${recipientCount} user${
+          recipientCount === 1 ? "" : "s"
+        }. Push sent: ${pushSent}, skipped: ${pushSkipped}.`
       );
 
       // Reset main inputs
@@ -129,13 +115,9 @@ export default function SendNotificationPage() {
       setSendMode("NOW");
       setScheduledAt("");
       setRepeatMode("NONE");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to send notification:", err);
-      const serverMsg =
-        err.response?.data?.message || err.message || "Failed to send notification";
-      showToast(Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg);
-    } finally {
-      setSending(false);
+      showToast(getErrorMessage(err, "Failed to send notification"));
     }
   }
 

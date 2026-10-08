@@ -1,94 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "@/api/client";
+import { AxiosError } from "axios";
+import { type AppUser } from "@/api/users";
 import Modal from "@/components/Modal";
 import { toast } from "@/components/Toast";
-
-interface AppUser {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  joined: string;
-  saved: number;
-  redeemed: number;
-  status: "Active" | "Suspended" | "Banned";
-}
-
-interface ApiUserRecord {
-  id: string;
-  fullName?: string;
-  email?: string;
-  phoneNumber?: string;
-  createdAt: string | Date;
-  status: string;
-  _count?: {
-    savedCoupons?: number;
-    couponRedemptions?: number;
-  };
-}
+import { useUpdateUserStatus, useUsers } from "@/hooks/useUsers";
 
 export default function UsersPage() {
-  const queryClient = useQueryClient();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => {
-      const data = await apiClient.get('/admin/users');
-      if (!Array.isArray(data)) return [];
-      return data.map((u: ApiUserRecord): AppUser => ({
-        id: u.id,
-        name: u.fullName || "Unknown",
-        email: u.email || "",
-        phone: u.phoneNumber || "Not provided",
-        joined: new Date(u.createdAt).toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" }),
-        saved: u._count?.savedCoupons || 0,
-        redeemed: u._count?.couponRedemptions || 0,
-        status: (u.status === "ACTIVE" ? "Active" : u.status === "SUSPENDED" ? "Suspended" : "Banned") as AppUser["status"],
-      }));
-    },
-  });
+  const { data: users = [] } = useUsers();
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string, status: string }) => {
-      return apiClient.patch(`/admin/users/${id}/status`, { status: status.toUpperCase() });
-    },
-    onMutate: async (variables) => {
-      await queryClient.cancelQueries({ queryKey: ['users'] });
-      const previousUsers = queryClient.getQueryData<AppUser[]>(['users']);
-      
-      queryClient.setQueryData<AppUser[]>(['users'], (old) => {
-        if (!old) return old;
-        return old.map(u => u.id === variables.id ? { ...u, status: variables.status as AppUser['status'] } : u);
-      });
-      
-      if (selectedUser && selectedUser.id === variables.id) {
-        setSelectedUser(prev => prev ? { ...prev, status: variables.status as AppUser['status'] } : null);
-      }
-      setActiveMenuId(null);
-      
-      return { previousUsers };
-    },
-    onError: (err: unknown, _variables, context) => {
-      if (context?.previousUsers) {
-        queryClient.setQueryData(['users'], context.previousUsers);
-      }
-      const errMsg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || "Failed to update status";
-      toast.error(errMsg, { title: "Update Failed" });
-      console.error("Failed to update status:", err);
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-    },
-  });
+  const updateStatusMutation = useUpdateUserStatus();
+  const updateStatus = (id: string, status: AppUser["status"]) => {
+    setActiveMenuId(null);
+    if (selectedUser && selectedUser.id === id) {
+      setSelectedUser((prev) => (prev ? { ...prev, status } : null));
+    }
 
-  const handleToggleStatus = (id: string, newStatus: "Active" | "Suspended" | "Banned") => {
-    updateStatusMutation.mutate({ id, status: newStatus });
+    updateStatusMutation.mutate(
+      { id, status },
+      {
+        onError: (err) => {
+          const errMsg =
+            err instanceof AxiosError && typeof err.response?.data?.message === "string"
+              ? err.response.data.message
+              : "Failed to update status";
+          toast.error(errMsg, { title: "Update Failed" });
+          console.error("Failed to update status:", err);
+        },
+      },
+    );
+  };
+
+  const handleToggleStatus = (id: string, newStatus: AppUser["status"]) => {
+    updateStatus(id, newStatus);
   };
 
   const handleOpenDetails = (user: AppUser) => {

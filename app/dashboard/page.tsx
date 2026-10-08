@@ -1,82 +1,18 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { apiClient } from "@/api/client";
+import { useMemo } from "react";
+import { emptyDashboardStats } from "@/api/dashboard";
+import { useDashboardOverview } from "@/hooks/useDashboardOverview";
 
 const assetBase = "/assets/dashboard/";
 
-interface DashboardStats {
-  businesses: number;
-  registeredUsers: number;
-  coupons: number;
-  liveCoupons: number;
-  couponsSaved: number;
-  redemptions: number;
-}
-
-interface TrendingCoupon {
-  id: string;
-  title: string;
-  merchant?: { name: string };
-  _count?: {
-    savedBy: number;
-    redemptions: number;
-  };
-}
-
-interface AreaRedemption {
-  areaId: string;
-  areaName: string;
-  redemptions: number;
-}
-
-const xLabels = ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"];
-const yLabels = ["100", "80", "60", "40", "20", "0"];
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"];
-const defaultBarHeights = [20, 35, 25, 40, 55, 65, 50, 75, 85];
-
 export default function Dashboard() {
-  const [stats, setStats] = useState<DashboardStats>({
-    businesses: 0,
-    registeredUsers: 0,
-    coupons: 0,
-    liveCoupons: 0,
-    couponsSaved: 0,
-    redemptions: 0,
-  });
-  const [trending, setTrending] = useState<TrendingCoupon[]>([]);
-  const [areaRedemptions, setAreaRedemptions] = useState<AreaRedemption[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        setLoading(true);
-        const [statsData, trendingData, areaData] = await Promise.all([
-          apiClient.get("/admin/dashboard/stats").catch(() => null),
-          apiClient.get("/admin/dashboard/trending-coupons").catch(() => []),
-          apiClient.get("/admin/dashboard/redemptions/by-area").catch(() => []),
-        ]);
-
-        if (statsData) {
-          setStats(statsData as unknown as DashboardStats);
-        }
-        if (Array.isArray(trendingData)) {
-          setTrending(trendingData as unknown as TrendingCoupon[]);
-        }
-        if (Array.isArray(areaData)) {
-          setAreaRedemptions(areaData as unknown as AreaRedemption[]);
-        }
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadDashboard();
-  }, []);
+  const { data, isLoading, isRefetching, refetch } = useDashboardOverview();
+  const stats = data?.stats ?? emptyDashboardStats;
+  const trending = data?.trending ?? [];
+  const areaRedemptions = data?.areaRedemptions ?? [];
+  const dailyPoints = data?.dailyRedemptions ?? [];
 
   const statCards = [
     {
@@ -112,8 +48,87 @@ export default function Dashboard() {
     },
   ];
 
+  // Dynamic area bar calculations
+  const { areaBars, maxAreaRedemptions } = useMemo(() => {
+    if (!areaRedemptions || areaRedemptions.length === 0) {
+      return { areaBars: [], maxAreaRedemptions: 0 };
+    }
+    const max = Math.max(...areaRedemptions.map((a) => a.redemptions), 1);
+    const bars = areaRedemptions.slice(0, 8).map((area) => {
+      const heightPercent = area.redemptions > 0 
+        ? Math.round((area.redemptions / max) * 75) + 15 
+        : 8;
+      return {
+        ...area,
+        heightPercent,
+      };
+    });
+    return { areaBars: bars, maxAreaRedemptions: max };
+  }, [areaRedemptions]);
+
+  // Hourly / daily distribution calculation
+  const { hourlyDistribution, maxDailyCount } = useMemo(() => {
+    const buckets: Record<string, number> = {
+      "00:00": 0,
+      "04:00": 0,
+      "08:00": 0,
+      "12:00": 0,
+      "16:00": 0,
+      "20:00": 0,
+    };
+
+    dailyPoints.forEach((point) => {
+      const date = new Date(point.time);
+      const hour = date.getHours();
+      if (hour < 4) buckets["00:00"] += point.count;
+      else if (hour < 8) buckets["04:00"] += point.count;
+      else if (hour < 12) buckets["08:00"] += point.count;
+      else if (hour < 16) buckets["12:00"] += point.count;
+      else if (hour < 20) buckets["16:00"] += point.count;
+      else buckets["20:00"] += point.count;
+    });
+
+    const values = Object.values(buckets);
+    const max = Math.max(...values, 1);
+    return { hourlyDistribution: buckets, maxDailyCount: max };
+  }, [dailyPoints]);
+
   return (
     <div className="w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pb-[79px] lg:pt-[18px]">
+      {/* Header bar with live refresh */}
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+            Live Overview
+          </h1>
+          <p className="text-xs text-slate-500 sm:text-sm">
+            Real-time analytics and activity monitoring for CityDeals
+          </p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          className="flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-50"
+          title="Refresh dashboard stats"
+        >
+          <svg
+            className={`size-3.5 ${isRefetching ? "animate-spin text-orange-500" : "text-slate-500"}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          <span className="hidden sm:inline">Refresh Data</span>
+        </button>
+      </div>
+
+      {/* KPI Stats Cards */}
       <section
         className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5"
         aria-label="Dashboard stats"
@@ -129,9 +144,9 @@ export default function Dashboard() {
             <div>
               <p className="m-0 whitespace-nowrap text-sm leading-5 text-[#315576]">{stat.label}</p>
               <strong className="mt-0.5 inline-block text-2xl font-semibold leading-8 text-slate-900">
-                {loading ? "..." : stat.value}
+                {isLoading ? "..." : stat.value}
               </strong>
-              {stat.meta && !loading && (
+              {stat.meta && !isLoading && (
                 <span className="ml-2 text-xs leading-4 text-slate-500">{stat.meta}</span>
               )}
             </div>
@@ -139,22 +154,32 @@ export default function Dashboard() {
         ))}
       </section>
 
+      {/* Daily Redemptions Area Chart */}
       <section
         className="mt-4 min-h-[372px] rounded-2xl border border-[#d8d3c5] bg-white px-4 pb-[18px] pt-5 sm:px-6"
         aria-labelledby="daily-title"
       >
-        <h1 className="m-0 text-xl font-medium leading-7 text-slate-900" id="daily-title">
-          Daily redemptions
-        </h1>
-        <p className="mt-0.5 text-sm leading-5 text-slate-500">
-          Redemption activity across the selected day
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="m-0 text-xl font-medium leading-7 text-slate-900" id="daily-title">
+              Daily Redemptions Activity
+            </h2>
+            <p className="mt-0.5 text-sm leading-5 text-slate-500">
+              Coupon redemptions recorded today across all areas ({dailyPoints.length} total events)
+            </p>
+          </div>
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+            Live Stream
+          </span>
+        </div>
 
         <div className="mt-[18px] grid h-[284px] grid-cols-[34px_minmax(0,1fr)] gap-2.5">
           <div className="flex flex-col justify-between pb-7 text-right text-xs leading-4 text-slate-400">
-            {yLabels.map((label) => (
-              <span key={label}>{label}</span>
-            ))}
+            <span>{maxDailyCount}</span>
+            <span>{Math.round(maxDailyCount * 0.75)}</span>
+            <span>{Math.round(maxDailyCount * 0.5)}</span>
+            <span>{Math.round(maxDailyCount * 0.25)}</span>
+            <span>0</span>
           </div>
           <div className="relative min-w-0">
             <div className="absolute inset-x-0 bottom-7 top-0 border-b border-l border-[#eef3f8] bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_44px,#eef3f8_45px)]" />
@@ -183,38 +208,63 @@ export default function Dashboard() {
               />
             </svg>
             <div className="absolute inset-x-0 bottom-0 flex justify-between text-xs leading-4 text-slate-400">
-              {xLabels.map((label) => (
-                <span key={label}>{label}</span>
+              {Object.keys(hourlyDistribution).map((label) => (
+                <span key={label} className="text-center font-medium">
+                  {label}
+                  {hourlyDistribution[label] > 0 && (
+                    <small className="block text-[10px] text-orange-600 font-bold">
+                      ({hourlyDistribution[label]})
+                    </small>
+                  )}
+                </span>
               ))}
             </div>
           </div>
         </div>
       </section>
 
+      {/* Grid: Redemptions by Area & Trending Coupons */}
       <section className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Redemptions by Area Chart */}
         <article className="min-h-[356px] rounded-2xl border border-[#d8d3c5] bg-white px-4 py-5 sm:px-6">
           <h2 className="m-0 text-xl font-medium leading-7 text-slate-900">Redemptions by Area</h2>
           <p className="mt-0.5 text-sm leading-5 text-slate-500">
             {areaRedemptions.length > 0
-              ? `${areaRedemptions.map((a) => `${a.areaName}: ${a.redemptions}`).join(" | ")}`
-              : "Monthly coupon redemption count"}
+              ? `Real-time activity across ${areaRedemptions.length} areas (Max: ${maxAreaRedemptions})`
+              : "No area redemptions recorded yet"}
           </p>
-          <div className="mt-[22px] grid h-[254px] grid-cols-9 items-end gap-4 border-b border-[#eef3f8] pt-4">
-            {months.map((month, index) => (
-              <div
-                className="flex h-full flex-col items-center justify-end gap-2.5 text-xs leading-4 text-slate-500"
-                key={month}
-              >
-                <span
-                  className="min-h-5 w-[26px] rounded-t-lg bg-[#16a34a] shadow-[inset_0_-10px_16px_rgba(12,74,110,0.12)]"
-                  style={{ height: `${defaultBarHeights[index]}%` }}
-                />
-                <small>{month}</small>
+
+          <div className="mt-[22px] flex h-[254px] items-end justify-between gap-2.5 border-b border-[#eef3f8] pb-2 pt-4 px-2">
+            {areaBars.length === 0 ? (
+              <div className="flex size-full items-center justify-center text-sm text-slate-400">
+                No area redemption data available
               </div>
-            ))}
+            ) : (
+              areaBars.map((area) => (
+                <div
+                  className="flex flex-1 h-full flex-col items-center justify-end gap-2 text-xs leading-4 text-slate-600 group relative"
+                  key={area.areaId}
+                >
+                  <span className="text-[11px] font-bold text-slate-800">
+                    {area.redemptions}
+                  </span>
+                  <span
+                    className="min-h-5 w-full max-w-[42px] rounded-t-lg bg-emerald-600 transition-all duration-300 group-hover:bg-emerald-500 shadow-[inset_0_-10px_16px_rgba(12,74,110,0.12)]"
+                    style={{ height: `${area.heightPercent}%` }}
+                  />
+                  <small
+                    className="truncate max-w-[55px] text-[11px] font-medium text-slate-500"
+                    title={area.areaName}
+                  >
+                    {area.areaName}
+                  </small>
+                </div>
+              ))
+            )}
           </div>
         </article>
 
+        {/* Trending Coupons Card */}
         <article className="min-h-[356px] rounded-2xl border border-[#d8d3c5] bg-white px-4 py-5 sm:px-6">
           <h2 className="m-0 text-xl font-medium leading-7 text-slate-900">Trending Coupons</h2>
           <p className="mt-0.5 text-sm leading-5 text-slate-500">Top saved and redeemed coupons</p>

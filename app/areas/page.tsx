@@ -1,29 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
-import { apiClient } from "@/api/client";
-
-export interface AreaItem {
-  id: string;
-  name: string;
-  slug: string;
-  city: string;
-  state: string;
-  latitude?: number | string | null;
-  longitude?: number | string | null;
-  radiusMeters?: number;
-  qrCodeUrl?: string | null;
-  _count?: {
-    merchants: number;
-    coupons: number;
-  };
-}
+import { type AreaItem, type AreaPayload } from "@/api/areas";
+import { useAreas, useCreateArea, useDeleteArea, useUpdateArea } from "@/hooks/useAreas";
 
 export default function AreasPage() {
-  const [areaList, setAreaList] = useState<AreaItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { data: areaList = [], isLoading: loading } = useAreas();
+  const createAreaMutation = useCreateArea();
+  const updateAreaMutation = useUpdateArea();
+  const deleteAreaMutation = useDeleteArea();
+  const saving = createAreaMutation.isPending || updateAreaMutation.isPending;
   const [isAddAreaOpen, setIsAddAreaOpen] = useState(false);
   const [editingArea, setEditingArea] = useState<AreaItem | null>(null);
   const [openActionSlug, setOpenActionSlug] = useState<string | null>(null);
@@ -38,28 +26,20 @@ export default function AreasPage() {
   const [longitude, setLongitude] = useState("");
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
-  async function fetchAreas() {
-    try {
-      setLoading(true);
-      const data = await apiClient.get("/areas");
-      if (Array.isArray(data)) {
-        setAreaList(data as AreaItem[]);
-      }
-    } catch (err: unknown) {
-      console.error("Failed to load areas:", err);
-      showToast("Failed to load areas from server");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchAreas();
-  }, []);
-
   function showToast(message: string) {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 2500);
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof AxiosError) {
+      const message = error.response?.data?.message;
+      if (Array.isArray(message)) return message.join(", ");
+      if (typeof message === "string") return message;
+      if (typeof error.response?.data?.error === "string") return error.response.data.error;
+    }
+    if (error instanceof Error) return error.message;
+    return fallback;
   }
 
   const handleAreaNameChange = (value: string) => {
@@ -149,7 +129,7 @@ export default function AreasPage() {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
 
-    const payload = {
+    const payload: AreaPayload = {
       name: areaName.trim(),
       slug,
       city: city.trim(),
@@ -159,37 +139,31 @@ export default function AreasPage() {
     };
 
     try {
-      setSaving(true);
       if (editingArea) {
-        await apiClient.patch(`/areas/${editingArea.id}`, payload);
+        await updateAreaMutation.mutateAsync({ id: editingArea.id, payload });
         showToast(`Updated ${areaName.trim()} area`);
       } else {
-        await apiClient.post("/areas", payload);
+        await createAreaMutation.mutateAsync(payload);
         showToast(`Added ${areaName.trim()} area`);
       }
 
       handleCloseAreaModal();
-      await fetchAreas();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to save area:", err);
-      const serverMsg = err.response?.data?.message || err.message || "Failed to save area";
-      showToast(Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg);
-    } finally {
-      setSaving(false);
+      showToast(getErrorMessage(err, "Failed to save area"));
     }
   };
 
   const handleDeleteArea = async (area: AreaItem) => {
     setOpenActionSlug(null);
     if (!confirm(`Are you sure you want to delete ${area.name}?`)) return;
-    try {
-      await apiClient.delete(`/areas/${area.id}`);
-      showToast(`Deleted ${area.name} area`);
-      await fetchAreas();
-    } catch (err: unknown) {
-      console.error("Failed to delete area:", err);
-      showToast("Failed to delete area");
-    }
+    deleteAreaMutation.mutate(area.id, {
+      onSuccess: () => showToast(`Deleted ${area.name} area`),
+      onError: (err) => {
+        console.error("Failed to delete area:", err);
+        showToast(getErrorMessage(err, "Failed to delete area"));
+      },
+    });
   };
 
   const totalMerchants = areaList.reduce((sum, a) => sum + (a._count?.merchants || 0), 0);

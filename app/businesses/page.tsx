@@ -2,65 +2,35 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
-import { apiClient } from "@/api/client";
 import { uploadImage } from "@/api/upload";
+import {
+  type AreaOption,
+  type BusinessItem,
+  type BusinessPayload,
+  type CategoryOption,
+} from "@/api/businesses";
+import {
+  useBusinessAreas,
+  useBusinessCategories,
+  useBusinesses,
+  useCreateBusiness,
+  useDeleteBusiness,
+  useUpdateBusiness,
+} from "@/hooks/useBusinesses";
 
 const assetBase = "/assets/dashboard/";
 
-export interface BusinessItem {
-  id: string;
-  name: string;
-  description?: string | null;
-  titleText?: string | null;
-  logoUrl?: string | null;
-  categoryId?: string | null;
-  areaId: string;
-  address: string;
-  phone?: string | null;
-  email?: string | null;
-  websiteUrl?: string | null;
-  instagramUrl?: string | null;
-  facebookUrl?: string | null;
-  tiktokUrl?: string | null;
-  radiusMeters?: number;
-  status: "ACTIVE" | "INACTIVE";
-  latitude?: number | string | null;
-  longitude?: number | string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  area?: {
-    id: string;
-    name: string;
-    city: string;
-    state?: string;
-  };
-  category?: {
-    id: string;
-    name: string;
-    slug?: string;
-  } | null;
-}
-
-interface CategoryOption {
-  id: string;
-  name: string;
-}
-
-interface AreaOption {
-  id: string;
-  name: string;
-  city: string;
-  latitude?: number | string | null;
-  longitude?: number | string | null;
-}
-
 export default function BusinessesPage() {
-  const [businessList, setBusinessList] = useState<BusinessItem[]>([]);
-  const [categories, setCategories] = useState<CategoryOption[]>([]);
-  const [areas, setAreas] = useState<AreaOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { data: businessList = [], isLoading: isBusinessesLoading } = useBusinesses();
+  const { data: categories = [], isLoading: isCategoriesLoading } = useBusinessCategories();
+  const { data: areas = [], isLoading: isAreasLoading } = useBusinessAreas();
+  const createBusinessMutation = useCreateBusiness();
+  const updateBusinessMutation = useUpdateBusiness();
+  const deleteBusinessMutation = useDeleteBusiness();
+  const loading = isBusinessesLoading || isCategoriesLoading || isAreasLoading;
+  const saving = createBusinessMutation.isPending || updateBusinessMutation.isPending;
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -93,45 +63,6 @@ export default function BusinessesPage() {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
 
-  async function fetchData() {
-    try {
-      setLoading(true);
-      const [merchantsData, categoriesData, areasData] = await Promise.all([
-        apiClient.get("/merchants").catch((err) => {
-          console.error("Failed to fetch merchants:", err);
-          return [];
-        }),
-        apiClient.get("/categories").catch((err) => {
-          console.error("Failed to fetch categories:", err);
-          return [];
-        }),
-        apiClient.get("/areas").catch((err) => {
-          console.error("Failed to fetch areas:", err);
-          return [];
-        }),
-      ]);
-
-      if (Array.isArray(merchantsData)) {
-        setBusinessList(merchantsData as BusinessItem[]);
-      }
-      if (Array.isArray(categoriesData)) {
-        setCategories(categoriesData as CategoryOption[]);
-      }
-      if (Array.isArray(areasData)) {
-        setAreas(areasData as AreaOption[]);
-      }
-    } catch (err: unknown) {
-      console.error("Error loading businesses data:", err);
-      showToast("Failed to load business data from server");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
   // Close action menus when clicking outside
   useEffect(() => {
     if (!openActionId) return;
@@ -156,6 +87,17 @@ export default function BusinessesPage() {
   function showToast(message: string) {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof AxiosError) {
+      const message = error.response?.data?.message;
+      if (Array.isArray(message)) return message.join(", ");
+      if (typeof message === "string") return message;
+      if (typeof error.response?.data?.error === "string") return error.response.data.error;
+    }
+    if (error instanceof Error) return error.message;
+    return fallback;
   }
 
   function handleLogoChange(event: ChangeEvent<HTMLInputElement>) {
@@ -262,20 +204,18 @@ export default function BusinessesPage() {
   async function handleToggleStatus(business: BusinessItem) {
     setOpenActionId(null);
     const nextStatus = business.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    try {
-      await apiClient.patch(`/merchants/${business.id}`, { status: nextStatus });
-      setBusinessList((currentList) =>
-        currentList.map((item) =>
-          item.id === business.id ? { ...item, status: nextStatus } : item
-        )
-      );
-      showToast(
-        `${business.name} ${nextStatus === "ACTIVE" ? "published" : "unpublished"}`
-      );
-    } catch (err: unknown) {
-      console.error("Failed to toggle business status:", err);
-      showToast("Failed to update status");
-    }
+    updateBusinessMutation.mutate(
+      { id: business.id, payload: { status: nextStatus } },
+      {
+        onSuccess: () => {
+          showToast(`${business.name} ${nextStatus === "ACTIVE" ? "published" : "unpublished"}`);
+        },
+        onError: (error) => {
+          console.error("Failed to toggle business status:", error);
+          showToast(getErrorMessage(error, "Failed to update status"));
+        },
+      },
+    );
   }
 
   async function handleDeleteBusiness(business: BusinessItem) {
@@ -284,16 +224,15 @@ export default function BusinessesPage() {
       return;
     }
 
-    try {
-      await apiClient.delete(`/merchants/${business.id}`);
-      setBusinessList((currentList) =>
-        currentList.filter((item) => item.id !== business.id)
-      );
-      showToast(`Deleted ${business.name}`);
-    } catch (err: unknown) {
-      console.error("Failed to delete business:", err);
-      showToast("Failed to delete business");
-    }
+    deleteBusinessMutation.mutate(business.id, {
+      onSuccess: () => {
+        showToast(`Deleted ${business.name}`);
+      },
+      onError: (error) => {
+        console.error("Failed to delete business:", error);
+        showToast(getErrorMessage(error, "Failed to delete business"));
+      },
+    });
   }
 
   async function handleSaveBusiness(event: React.FormEvent<HTMLFormElement>) {
@@ -322,8 +261,6 @@ export default function BusinessesPage() {
     }
 
     try {
-      setSaving(true);
-
       let finalLogoUrl = editingBusiness?.logoUrl || undefined;
 
       // If user selected a new file, upload to Cloudinary
@@ -333,7 +270,7 @@ export default function BusinessesPage() {
         finalLogoUrl = uploadRes.secureUrl || uploadRes.url;
       }
 
-      const payload = {
+      const payload: BusinessPayload = {
         name: name.trim(),
         titleText: titleText.trim() || undefined,
         categoryId: categoryId || undefined,
@@ -352,22 +289,17 @@ export default function BusinessesPage() {
       };
 
       if (editingBusiness) {
-        await apiClient.patch(`/merchants/${editingBusiness.id}`, payload);
+        await updateBusinessMutation.mutateAsync({ id: editingBusiness.id, payload });
         showToast(`Updated ${name.trim()}`);
       } else {
-        await apiClient.post("/merchants", payload);
+        await createBusinessMutation.mutateAsync(payload);
         showToast(`Created ${name.trim()}`);
       }
 
       handleCloseDrawer();
-      await fetchData();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to save business:", err);
-      const serverMsg =
-        err.response?.data?.message || err.message || "Failed to save business";
-      showToast(Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg);
-    } finally {
-      setSaving(false);
+      showToast(getErrorMessage(err, "Failed to save business"));
     }
   }
 

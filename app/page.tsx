@@ -1,13 +1,18 @@
 "use client";
 import Image from "next/image";
+import { AxiosError } from "axios";
 import { useState, type FormEvent } from "react";
 import hero from "../assets/lending-hero.png";
 import { useRouter } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
 
+import { authApi, type AuthResponse } from "@/api/auth";
 import { toast } from "@/components/Toast";
+import { useAuthStore } from "@/store/useAuthStore";
 
 export default function Home() {
   const router = useRouter();
+  const setSession = useAuthStore((state) => state.setSession);
   const [step, setStep] = useState<"signin" | "email" | "otp" | "reset">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,7 +36,18 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:5000/api";
+  const loginMutation = useMutation({
+    mutationFn: authApi.login,
+  });
+  const forgotPasswordMutation = useMutation({
+    mutationFn: authApi.forgotPassword,
+  });
+  const verifyOtpMutation = useMutation({
+    mutationFn: authApi.verifyOtp,
+  });
+  const resetPasswordMutation = useMutation({
+    mutationFn: authApi.resetPassword,
+  });
 
   function changeStep(next: "signin" | "email" | "otp" | "reset") {
     setStep(next);
@@ -51,32 +67,17 @@ export default function Home() {
     }
   }
 
-  interface ApiAuthResponse {
-    message?: string | string[];
-    error?: string;
-    data?: {
-      otp?: string;
-      user?: { id: string; email: string; fullName?: string; role: string };
-      tokens?: { accessToken: string; refreshToken: string };
-    };
-    otp?: string;
-    user?: { id: string; email: string; fullName?: string; role: string };
-    tokens?: { accessToken: string; refreshToken: string };
-  }
-
-  function getErrorMessage(res: Response, data: ApiAuthResponse | null, defaultMsg: string): string {
-    if (data) {
-      if (Array.isArray(data.message)) {
-        return data.message.join(", ");
-      } else if (typeof data.message === "string") {
-        return data.message;
-      } else if (typeof data.error === "string") {
-        return data.error;
-      }
+  function getApiErrorMessage(error: unknown, defaultMsg: string): string {
+    if (error instanceof AxiosError) {
+      const data = error.response?.data as { message?: string | string[]; error?: string } | undefined;
+      if (Array.isArray(data?.message)) return data.message.join(", ");
+      if (typeof data?.message === "string") return data.message;
+      if (typeof data?.error === "string") return data.error;
+      if (error.response?.status === 401) return "Invalid email or password.";
+      if (error.response?.status === 404) return "Account not found with this email.";
+      if (error.response?.status === 500) return "Internal server error. Please try again later.";
     }
-    if (res.status === 401) return "Invalid email or password.";
-    if (res.status === 404) return "Account not found with this email.";
-    if (res.status === 500) return "Internal server error. Please try again later.";
+    if (error instanceof Error) return error.message;
     return defaultMsg;
   }
 
@@ -86,24 +87,15 @@ export default function Home() {
     setNotice("");
 
     try {
-      const res = await fetch(`${baseUrl}/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-
-      const data: ApiAuthResponse | null = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(getErrorMessage(res, data, "Failed to resend code"));
-      }
+      const data = await forgotPasswordMutation.mutateAsync({ email: email.trim() });
 
       toast.success(`A new verification code was sent to ${email.trim()}`, { title: "Code Resent" });
-      const devOtp = data?.data?.otp || data?.otp;
+      const devOtp = data?.otp;
       if (devOtp) {
         toast.info(`Dev Code: ${devOtp}`, { title: "OTP Received" });
       }
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : "Failed to resend verification code";
+      const errorMsg = getApiErrorMessage(err, "Failed to resend verification code");
       toast.error(errorMsg, { title: "Error" });
     } finally {
       setResending(false);
@@ -126,31 +118,17 @@ export default function Home() {
       setNotice("");
 
       try {
-        let res: Response;
-        try {
-          res = await fetch(`${baseUrl}/auth/forgot-password`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: trimmedEmail }),
-          });
-        } catch {
-          throw new Error("Unable to connect to server. Please check your network or API status.");
-        }
-
-        const data: ApiAuthResponse | null = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(getErrorMessage(res, data, "Failed to send reset code"));
-        }
+        const data = await forgotPasswordMutation.mutateAsync({ email: trimmedEmail });
 
         toast.success(`Verification code sent to ${trimmedEmail}`, { title: "Code Sent" });
-        const devOtp = data?.data?.otp || data?.otp;
+        const devOtp = data?.otp;
         if (devOtp) {
           toast.info(`Dev Code: ${devOtp}`, { title: "OTP Received" });
         }
 
         changeStep("otp");
       } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : "Failed to send verification code.";
+        const errorMsg = getApiErrorMessage(err, "Failed to send verification code.");
         setNotice(errorMsg);
         toast.error(errorMsg, { title: "Request Failed" });
       } finally {
@@ -174,27 +152,13 @@ export default function Home() {
       setNotice("");
 
       try {
-        let res: Response;
-        try {
-          res = await fetch(`${baseUrl}/auth/verify-otp`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email.trim(), otp: trimmedOtp }),
-          });
-        } catch {
-          throw new Error("Unable to connect to server. Please check your network or API status.");
-        }
-
-        const data: ApiAuthResponse | null = await res.json().catch(() => null);
-        if (!res.ok) {
-          setOtpError(true);
-          throw new Error(getErrorMessage(res, data, "Invalid verification code"));
-        }
+        await verifyOtpMutation.mutateAsync({ email: email.trim(), otp: trimmedOtp });
 
         toast.success("Verification code verified! Create your new password.", { title: "Verified" });
         changeStep("reset");
       } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : "Invalid or expired verification code.";
+        setOtpError(true);
+        const errorMsg = getApiErrorMessage(err, "Invalid or expired verification code.");
         setNotice(errorMsg);
         toast.error(errorMsg, { title: "Verification Failed" });
       } finally {
@@ -245,26 +209,12 @@ export default function Home() {
       setNotice("");
 
       try {
-        let res: Response;
-        try {
-          res = await fetch(`${baseUrl}/auth/reset-password`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: email.trim(),
-              otp: otp.trim(),
-              newPassword,
-              confirmPassword,
-            }),
-          });
-        } catch {
-          throw new Error("Unable to connect to server. Please check your network or API status.");
-        }
-
-        const data: ApiAuthResponse | null = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(getErrorMessage(res, data, "Failed to reset password"));
-        }
+        await resetPasswordMutation.mutateAsync({
+          email: email.trim(),
+          otp: otp.trim(),
+          newPassword,
+          confirmPassword,
+        });
 
         toast.success("Password reset successfully! You can now sign in with your new password.", {
           title: "Password Reset Successful",
@@ -273,7 +223,7 @@ export default function Home() {
         setPassword("");
         changeStep("signin");
       } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : "Failed to reset password.";
+        const errorMsg = getApiErrorMessage(err, "Failed to reset password.");
         setNotice(errorMsg);
         toast.error(errorMsg, { title: "Reset Failed" });
       } finally {
@@ -316,31 +266,10 @@ export default function Home() {
       setNotice("");
 
       try {
-        let res: Response;
-        try {
-          res = await fetch(`${baseUrl}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: trimmedEmail, password }),
-          });
-        } catch {
-          throw new Error("Unable to connect to server. Please check your internet or API tunnel.");
-        }
+        const data: AuthResponse = await loginMutation.mutateAsync({ email: trimmedEmail, password });
 
-        let data: ApiAuthResponse | null = null;
-        try {
-          const text = await res.text();
-          data = text ? JSON.parse(text) : null;
-        } catch {
-          data = null;
-        }
-
-        if (!res.ok) {
-          throw new Error(getErrorMessage(res, data, `Server error (${res.status}): ${res.statusText || "Failed to login"}`));
-        }
-
-        const user = data?.data?.user || data?.user;
-        const tokens = data?.data?.tokens || data?.tokens;
+        const user = data?.user;
+        const tokens = data?.tokens;
 
         if (!user || !tokens?.accessToken) {
           throw new Error("Invalid response received from authentication server.");
@@ -350,8 +279,7 @@ export default function Home() {
           throw new Error("Access denied. Only Admins can access the dashboard.");
         }
 
-        localStorage.setItem("dashboard_access_token", tokens.accessToken);
-        localStorage.setItem("dashboard_refresh_token", tokens.refreshToken);
+        setSession(user, tokens.accessToken, tokens.refreshToken);
         localStorage.setItem("dashboard_user", JSON.stringify(user));
 
         toast.success(`Welcome back, ${user.fullName || user.email}! Login successful.`, {
@@ -362,7 +290,7 @@ export default function Home() {
           router.push("/dashboard");
         }, 600);
       } catch (error: unknown) {
-        const errorMsg = error instanceof Error ? error.message : "An error occurred during login.";
+        const errorMsg = getApiErrorMessage(error, "An error occurred during login.");
         setNotice(errorMsg);
         toast.error(errorMsg, { title: "Login Failed" });
       } finally {

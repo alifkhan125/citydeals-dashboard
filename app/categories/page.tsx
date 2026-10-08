@@ -2,30 +2,25 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
-import { apiClient } from "@/api/client";
 import { uploadImage } from "@/api/upload";
+import { type Category, type CategoryPayload } from "@/api/categories";
+import {
+  useCategories,
+  useCreateCategory,
+  useDeleteCategory,
+  useUpdateCategory,
+} from "@/hooks/useCategories";
 
 const assetBase = "/assets/dashboard/";
 
-export interface Category {
-  id: string;
-  name: string;
-  slug: string;
-  iconUrl?: string | null;
-  description?: string | null;
-  status: "ACTIVE" | "INACTIVE";
-  sortOrder?: number;
-  _count?: {
-    coupons: number;
-    merchants: number;
-  };
-}
-
 export default function CategoriesPage() {
-  const [categoryList, setCategoryList] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { data: categoryList = [], isLoading: loading } = useCategories();
+  const createCategoryMutation = useCreateCategory();
+  const updateCategoryMutation = useUpdateCategory();
+  const deleteCategoryMutation = useDeleteCategory();
+  const saving = createCategoryMutation.isPending || updateCategoryMutation.isPending;
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,25 +40,6 @@ export default function CategoriesPage() {
   const [description, setDescription] = useState("");
   const [sortOrder, setSortOrder] = useState<number>(0);
   const [status, setStatus] = useState<"ACTIVE" | "INACTIVE">("ACTIVE");
-
-  async function fetchCategories() {
-    try {
-      setLoading(true);
-      const data = await apiClient.get("/categories");
-      if (Array.isArray(data)) {
-        setCategoryList(data as Category[]);
-      }
-    } catch (err: unknown) {
-      console.error("Failed to load categories:", err);
-      showToast("Failed to load categories from server");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    fetchCategories();
-  }, []);
 
   // Close action menus when clicking outside
   useEffect(() => {
@@ -102,6 +78,17 @@ export default function CategoriesPage() {
   function showToast(message: string) {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof AxiosError) {
+      const message = error.response?.data?.message;
+      if (Array.isArray(message)) return message.join(", ");
+      if (typeof message === "string") return message;
+      if (typeof error.response?.data?.error === "string") return error.response.data.error;
+    }
+    if (error instanceof Error) return error.message;
+    return fallback;
   }
 
   function handleOpenNewCategory() {
@@ -143,31 +130,32 @@ export default function CategoriesPage() {
   async function handleToggleStatus(category: Category) {
     setOpenActionId(null);
     const newStatus = category.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    try {
-      await apiClient.patch(`/categories/${category.id}`, { status: newStatus });
-      setCategoryList((current) =>
-        current.map((item) =>
-          item.id === category.id ? { ...item, status: newStatus } : item
-        )
-      );
-      showToast(`${category.name} ${newStatus === "ACTIVE" ? "published" : "unpublished"}`);
-    } catch (err: unknown) {
-      console.error("Failed to toggle status:", err);
-      showToast("Failed to update category status");
-    }
+    updateCategoryMutation.mutate(
+      { id: category.id, payload: { status: newStatus } },
+      {
+        onSuccess: () => {
+          showToast(`${category.name} ${newStatus === "ACTIVE" ? "published" : "unpublished"}`);
+        },
+        onError: (error) => {
+          console.error("Failed to toggle status:", error);
+          showToast(getErrorMessage(error, "Failed to update category status"));
+        },
+      },
+    );
   }
 
   async function handleDeleteCategory(category: Category) {
     setOpenActionId(null);
     if (!confirm(`Are you sure you want to delete ${category.name}?`)) return;
-    try {
-      await apiClient.delete(`/categories/${category.id}`);
-      setCategoryList((current) => current.filter((item) => item.id !== category.id));
-      showToast(`Deleted ${category.name}`);
-    } catch (err: unknown) {
-      console.error("Failed to delete category:", err);
-      showToast("Failed to delete category");
-    }
+    deleteCategoryMutation.mutate(category.id, {
+      onSuccess: () => {
+        showToast(`Deleted ${category.name}`);
+      },
+      onError: (error) => {
+        console.error("Failed to delete category:", error);
+        showToast(getErrorMessage(error, "Failed to delete category"));
+      },
+    });
   }
 
   async function handleSaveCategory(event: React.FormEvent) {
@@ -178,7 +166,6 @@ export default function CategoriesPage() {
     }
 
     try {
-      setSaving(true);
       let uploadedIconUrl = editingCategory?.iconUrl || undefined;
 
       if (iconFile) {
@@ -199,7 +186,7 @@ export default function CategoriesPage() {
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/(^-|-$)/g, "");
 
-      const payload = {
+      const payload: CategoryPayload = {
         name: name.trim(),
         slug: generatedSlug,
         description: description.trim() || undefined,
@@ -209,22 +196,17 @@ export default function CategoriesPage() {
       };
 
       if (editingCategory) {
-        await apiClient.patch(`/categories/${editingCategory.id}`, payload);
+        await updateCategoryMutation.mutateAsync({ id: editingCategory.id, payload });
         showToast(`Updated ${name.trim()}`);
       } else {
-        await apiClient.post("/categories", payload);
+        await createCategoryMutation.mutateAsync(payload);
         showToast(`Created ${name.trim()}`);
       }
 
       handleCloseDrawer();
-      await fetchCategories();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to save category:", err);
-      const serverMsg =
-        err.response?.data?.message || err.message || "Failed to save category";
-      showToast(Array.isArray(serverMsg) ? serverMsg.join(", ") : serverMsg);
-    } finally {
-      setSaving(false);
+      showToast(getErrorMessage(err, "Failed to save category"));
     }
   }
 

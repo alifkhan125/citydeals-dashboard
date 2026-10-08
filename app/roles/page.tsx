@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "@/components/Toast";
+import { useRoles, useUpdateRolePermissions } from "@/hooks/useRoles";
 
-type RoleKey = "administrator" | "manager" | "moderator" | "employee";
+type RoleKey = "administrator" | "manager" | "editor" | "viewer";
 
 interface PermissionItem {
   id: string;
@@ -56,25 +58,49 @@ const permissionList: PermissionItem[] = [
 const roles: { key: RoleKey; label: string }[] = [
   { key: "administrator", label: "Administrator" },
   { key: "manager", label: "Manager" },
-  { key: "moderator", label: "Moderator" },
-  { key: "employee", label: "Employee" },
+  { key: "editor", label: "Editor" },
+  { key: "viewer", label: "Viewer" },
 ];
 
 const initialMatrix: Record<string, Record<RoleKey, boolean>> = {
-  "manage-coupon-categories": { administrator: false, manager: false, moderator: false, employee: false },
-  "manage-business-profiles": { administrator: false, manager: false, moderator: false, employee: false },
-  "create-edit-coupons": { administrator: false, manager: false, moderator: false, employee: false },
-  "publish-coupons": { administrator: false, manager: false, moderator: false, employee: false },
-  "edit-app-pages": { administrator: false, manager: false, moderator: false, employee: false },
-  "delete-content": { administrator: false, manager: false, moderator: false, employee: false },
-  "manage-registered-users": { administrator: false, manager: false, moderator: false, employee: false },
-  "manage-staff-accounts": { administrator: true, manager: false, moderator: false, employee: false },
+  "manage-coupon-categories": { administrator: false, manager: false, editor: false, viewer: false },
+  "manage-business-profiles": { administrator: false, manager: false, editor: false, viewer: false },
+  "create-edit-coupons": { administrator: false, manager: false, editor: false, viewer: false },
+  "publish-coupons": { administrator: false, manager: false, editor: false, viewer: false },
+  "edit-app-pages": { administrator: false, manager: false, editor: false, viewer: false },
+  "delete-content": { administrator: false, manager: false, editor: false, viewer: false },
+  "manage-registered-users": { administrator: false, manager: false, editor: false, viewer: false },
+  "manage-staff-accounts": { administrator: true, manager: false, editor: false, viewer: false },
 };
 
 export default function RolesAndPermissionsPage() {
+  const { data: roleData = [], isLoading } = useRoles();
+  const updateRolePermissionsMutation = useUpdateRolePermissions();
   const [matrix, setMatrix] = useState<Record<string, Record<RoleKey, boolean>>>(initialMatrix);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+
+  const rolePermissionsByKey = useMemo(() => {
+    return new Map(roleData.map((role) => [role.key, role.permissions || {}]));
+  }, [roleData]);
+
+  useEffect(() => {
+    if (roleData.length === 0) return;
+
+    setMatrix(() => {
+      const nextMatrix: Record<string, Record<RoleKey, boolean>> = { ...initialMatrix };
+
+      permissionList.forEach((permission) => {
+        nextMatrix[permission.id] = { ...initialMatrix[permission.id] };
+        roles.forEach((role) => {
+          nextMatrix[permission.id][role.key] =
+            rolePermissionsByKey.get(role.key)?.[permission.id] ??
+            initialMatrix[permission.id][role.key];
+        });
+      });
+
+      return nextMatrix;
+    });
+  }, [roleData.length, rolePermissionsByKey]);
 
   const togglePermission = (permissionId: string, role: RoleKey) => {
     setMatrix((prev) => ({
@@ -86,16 +112,33 @@ export default function RolesAndPermissionsPage() {
     }));
   };
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+  const handleSave = async () => {
+    try {
+      await Promise.all(
+        roles.map((role) => {
+          const permissions = permissionList.reduce<Record<string, boolean>>((acc, permission) => {
+            acc[permission.id] = !!matrix[permission.id]?.[role.key];
+            return acc;
+          }, {});
+
+          return updateRolePermissionsMutation.mutateAsync({
+            roleKey: role.key,
+            permissions,
+          });
+        }),
+      );
+
       setToastMessage("Roles & permissions saved successfully!");
+      toast.success("Roles & permissions saved successfully!", { title: "Saved" });
       setTimeout(() => {
         setToastMessage(null);
       }, 3000);
-    }, 400);
+    } catch {
+      toast.error("Failed to save roles & permissions.", { title: "Save Failed" });
+    }
   };
+
+  const isSaving = updateRolePermissionsMutation.isPending;
 
   return (
     <div className="w-full px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
@@ -113,7 +156,7 @@ export default function RolesAndPermissionsPage() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || isLoading}
             className="inline-flex h-11 w-full shrink-0 cursor-pointer items-center justify-center rounded-xl bg-[#f97316] px-8 text-sm font-medium text-white shadow-sm transition-all hover:bg-[#ea580c] active:scale-95 disabled:opacity-70 sm:w-auto"
           >
             {isSaving ? "Saving..." : "Save"}
@@ -183,8 +226,8 @@ export default function RolesAndPermissionsPage() {
               <div className="border-r border-slate-200 px-6 py-3.5">Person</div>
               <div className="border-r border-slate-200 px-6 py-3.5">Administrator</div>
               <div className="border-r border-slate-200 px-6 py-3.5">Manager</div>
-              <div className="border-r border-slate-200 px-6 py-3.5">Moderator</div>
-              <div className="px-6 py-3.5">Employee</div>
+              <div className="border-r border-slate-200 px-6 py-3.5">Editor</div>
+              <div className="px-6 py-3.5">Viewer</div>
             </div>
 
             {/* Table Body */}

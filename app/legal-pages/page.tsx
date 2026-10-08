@@ -1,68 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiClient } from "@/api/client";
+import { AxiosError } from "axios";
+import { type LegalPage, type LegalPageStatus } from "@/api/legal";
 import { toast } from "@/components/Toast";
-
-type LegalPageStatus = "Published" | "Draft";
-
-interface ApiLegalDocument {
-  id: string;
-  type: string;
-  title: string;
-  content: string;
-  version: string;
-  updatedAt: string;
-}
-
-interface LegalPage {
-  id: string;
-  type: string;
-  title: string;
-  slug: string;
-  version: string;
-  status: LegalPageStatus;
-  content: string;
-  updatedAt: string;
-}
-
-function typeToSlug(type: string): string {
-  return type.toLowerCase().replace(/_/g, "-");
-}
+import { useLegalPages, useSaveLegalPage } from "@/hooks/useLegalPages";
 
 export default function LegalPagesPage() {
-  const queryClient = useQueryClient();
-
   const {
-    data: apiPages = [],
+    data: pages = [],
     isLoading,
     isError,
-  } = useQuery({
-    queryKey: ["legal-pages"],
-    queryFn: async () => {
-      const data = await apiClient.get<unknown, ApiLegalDocument[]>("/legal/pages");
-      return Array.isArray(data) ? data : [];
-    },
-  });
-
-  const pages: LegalPage[] = useMemo(() => {
-    if (!apiPages.length) return [];
-    return apiPages.map((doc) => ({
-      id: doc.id,
-      type: doc.type,
-      title: doc.title,
-      slug: typeToSlug(doc.type),
-      version: doc.version || "1.0",
-      status: "Published",
-      content: doc.content || "",
-      updatedAt: new Date(doc.updatedAt).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-    }));
-  }, [apiPages]);
+  } = useLegalPages();
 
   const [selectedId, setSelectedId] = useState<string>("");
   const [title, setTitle] = useState("");
@@ -108,27 +57,16 @@ export default function LegalPagesPage() {
   }
 
   // Mutation to save legal page to backend
-  const saveMutation = useMutation({
-    mutationFn: async ({
-      pageType,
-      payload,
-    }: {
-      pageType: string;
-      payload: { title: string; content: string; version: string };
-    }) => {
-      return apiClient.put(`/legal/pages/${pageType}`, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["legal-pages"] });
-      toast.success(`${title} saved successfully`, { title: "Changes Saved" });
-    },
-    onError: (err: unknown) => {
-      const errMsg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || "Failed to save legal page";
-      toast.error(errMsg, { title: "Save Failed" });
-    },
-  });
+  const saveMutation = useSaveLegalPage();
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof AxiosError) {
+      const message = error.response?.data?.message;
+      if (Array.isArray(message)) return message.join(", ");
+      if (typeof message === "string") return message;
+    }
+    return fallback;
+  }
 
   function handleSave() {
     if (!title.trim() || !slug.trim()) {
@@ -137,14 +75,20 @@ export default function LegalPagesPage() {
     }
 
     const pageType = selectedPage?.type || slug;
-    saveMutation.mutate({
-      pageType,
-      payload: {
-        title: title.trim(),
-        content,
-        version: version.trim() || "1.0",
+    saveMutation.mutate(
+      {
+        pageType,
+        payload: {
+          title: title.trim(),
+          content,
+          version: version.trim() || "1.0",
+        },
       },
-    });
+      {
+        onSuccess: () => toast.success(`${title} saved successfully`, { title: "Changes Saved" }),
+        onError: (error) => toast.error(getErrorMessage(error, "Failed to save legal page"), { title: "Save Failed" }),
+      },
+    );
   }
 
   function handleTogglePublish() {

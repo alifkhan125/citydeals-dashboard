@@ -25,3 +25,7 @@ export async function uploadImage(file: File, folder: string = 'general'): Promi
 export async function uploadBase64Image(data: string, folder: string = 'general'): Promise<UploadResult> {
   return apiClient.post('/upload/base64', { data, folder });
 }
+
+export async function deleteUpload(publicId: string) {
+  return apiClient.delete('/upload', { data: { publicId } });
+}

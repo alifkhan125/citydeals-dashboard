@@ -2,68 +2,30 @@
 
 import Image from "next/image";
 import { useEffect, useState, type ChangeEvent } from "react";
+import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
-import { apiClient } from "@/api/client";
 import { uploadImage } from "@/api/upload";
+import { type CouponItem, type CouponPayload } from "@/api/coupons";
+import {
+  useCouponCategories,
+  useCouponMerchants,
+  useCoupons,
+  useCreateCoupon,
+  useDeleteCoupon,
+  useUpdateCoupon,
+} from "@/hooks/useCoupons";
 
 const assetBase = "/assets/dashboard/";
 
-export interface CouponItem {
-  id: string;
-  title: string;
-  description: string;
-  imageUrl?: string | null;
-  couponCode?: string | null;
-  couponLink?: string | null;
-  redemptionLimit?: number | null;
-  redemptionFrequency?: string;
-  discussion?: string | null;
-  terms?: string | null;
-  status: "ACTIVE" | "DRAFT" | "PAUSED" | "EXPIRED";
-  startsAt?: string | null;
-  expiresAt?: string | null;
-  areaId?: string;
-  merchantId: string;
-  categoryId?: string | null;
-  isWhitelisted?: boolean;
-  createdAt: string;
-  updatedAt?: string;
-  merchant?: {
-    id: string;
-    name: string;
-    logoUrl?: string | null;
-  };
-  category?: {
-    id: string;
-    name: string;
-    slug: string;
-  };
-  area?: {
-    id: string;
-    name: string;
-    city: string;
-  };
-  views?: number;
-  likes?: number;
-  redemptions?: number;
-}
-
-interface MerchantOption {
-  id: string;
-  name: string;
-}
-
-interface CategoryOption {
-  id: string;
-  name: string;
-}
-
 export default function CouponsPage() {
-  const [coupons, setCoupons] = useState<CouponItem[]>([]);
-  const [merchants, setMerchants] = useState<MerchantOption[]>([]);
-  const [categories, setCategories] = useState<CategoryOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { data: coupons = [], isLoading: isCouponsLoading } = useCoupons();
+  const { data: merchants = [], isLoading: isMerchantsLoading } = useCouponMerchants();
+  const { data: categories = [], isLoading: isCategoriesLoading } = useCouponCategories();
+  const createCouponMutation = useCreateCoupon();
+  const updateCouponMutation = useUpdateCoupon();
+  const deleteCouponMutation = useDeleteCoupon();
+  const loading = isCouponsLoading || isMerchantsLoading || isCategoriesLoading;
+  const saving = createCouponMutation.isPending || updateCouponMutation.isPending;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -85,54 +47,6 @@ export default function CouponsPage() {
   const [discussion, setDiscussion] = useState("");
   const [terms, setTerms] = useState("");
 
-  async function fetchCoupons() {
-    try {
-      setLoading(true);
-      const data = await apiClient.get("/coupons");
-      if (Array.isArray(data)) {
-        setCoupons(data as CouponItem[]);
-      }
-    } catch (err: unknown) {
-      console.error("Failed to load coupons:", err);
-      showToast("Failed to load coupons from server");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function fetchFilterData() {
-    try {
-      const [merchantsRes, categoriesRes] = await Promise.all([
-        apiClient.get("/merchants").catch(() => []),
-        apiClient.get("/categories").catch(() => []),
-      ]);
-
-      if (Array.isArray(merchantsRes)) {
-        setMerchants(
-          merchantsRes.map((m: any) => ({
-            id: m.id,
-            name: m.name,
-          }))
-        );
-      }
-      if (Array.isArray(categoriesRes)) {
-        setCategories(
-          categoriesRes.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-          }))
-        );
-      }
-    } catch (err) {
-      console.error("Failed to fetch dropdown filter data:", err);
-    }
-  }
-
-  useEffect(() => {
-    fetchCoupons();
-    fetchFilterData();
-  }, []);
-
   useEffect(() => {
     return () => {
       if (logoPreview && logoPreview.startsWith("blob:")) {
@@ -153,6 +67,17 @@ export default function CouponsPage() {
   function showToast(message: string) {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 2500);
+  }
+
+  function getErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof AxiosError) {
+      const message = error.response?.data?.message;
+      if (Array.isArray(message)) return message.join(", ");
+      if (typeof message === "string") return message;
+      if (typeof error.response?.data?.error === "string") return error.response.data.error;
+    }
+    if (error instanceof Error) return error.message;
+    return fallback;
   }
 
   function handleOpenNewCoupon() {
@@ -206,27 +131,32 @@ export default function CouponsPage() {
   async function handleToggleStatus(coupon: CouponItem) {
     setOpenActionId(null);
     const newStatus = coupon.status === "ACTIVE" ? "DRAFT" : "ACTIVE";
-    try {
-      await apiClient.patch(`/coupons/${coupon.id}`, { status: newStatus });
-      showToast(`${coupon.title} ${newStatus === "ACTIVE" ? "published" : "unpublished"}`);
-      await fetchCoupons();
-    } catch (err: unknown) {
-      console.error("Failed to toggle status:", err);
-      showToast("Failed to update coupon status");
-    }
+    updateCouponMutation.mutate(
+      { id: coupon.id, payload: { status: newStatus } },
+      {
+        onSuccess: () => {
+          showToast(`${coupon.title} ${newStatus === "ACTIVE" ? "published" : "unpublished"}`);
+        },
+        onError: (error) => {
+          console.error("Failed to toggle status:", error);
+          showToast(getErrorMessage(error, "Failed to update coupon status"));
+        },
+      },
+    );
   }
 
   async function handleDeleteCoupon(coupon: CouponItem) {
     setOpenActionId(null);
     if (!confirm(`Are you sure you want to delete ${coupon.title}?`)) return;
-    try {
-      await apiClient.delete(`/coupons/${coupon.id}`);
-      showToast(`Deleted ${coupon.title}`);
-      await fetchCoupons();
-    } catch (err: unknown) {
-      console.error("Failed to delete coupon:", err);
-      showToast("Failed to delete coupon");
-    }
+    deleteCouponMutation.mutate(coupon.id, {
+      onSuccess: () => {
+        showToast(`Deleted ${coupon.title}`);
+      },
+      onError: (error) => {
+        console.error("Failed to delete coupon:", error);
+        showToast(getErrorMessage(error, "Failed to delete coupon"));
+      },
+    });
   }
 
   function formatDate(date?: string | null) {
@@ -388,7 +318,6 @@ export default function CouponsPage() {
     }
 
     try {
-      setSaving(true);
       let uploadedImageUrl = editingCoupon?.imageUrl || "";
 
       if (logoFile) {
@@ -407,7 +336,7 @@ export default function CouponsPage() {
         Unlimited: "UNLIMITED",
       };
 
-      const payload = {
+      const payload: CouponPayload = {
         title: offer.trim(),
         description: discussion.trim() || offer.trim(),
         merchantId: business,
@@ -423,20 +352,17 @@ export default function CouponsPage() {
       };
 
       if (editingCoupon) {
-        await apiClient.patch(`/coupons/${editingCoupon.id}`, payload);
+        await updateCouponMutation.mutateAsync({ id: editingCoupon.id, payload });
         showToast("Coupon changes saved");
       } else {
-        await apiClient.post("/coupons", payload);
+        await createCouponMutation.mutateAsync(payload);
         showToast("Coupon created successfully");
       }
 
       handleCloseModal();
-      await fetchCoupons();
     } catch (err: unknown) {
       console.error("Failed to save coupon:", err);
-      showToast(err instanceof Error ? err.message : "Failed to save coupon");
-    } finally {
-      setSaving(false);
+      showToast(getErrorMessage(err, "Failed to save coupon"));
     }
   };
 
