@@ -9,6 +9,9 @@ export interface AppUser {
   saved: number;
   redeemed: number;
   status: "Active" | "Suspended" | "Banned";
+  locationName: string;
+  locationCoordinates: string;
+  hasLocation: boolean;
 }
 
 interface ApiUserRecord {
@@ -18,14 +21,36 @@ interface ApiUserRecord {
   phoneNumber?: string;
   createdAt: string | Date;
   status: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  area?: {
+    id?: string;
+    name?: string | null;
+    city?: string | null;
+    state?: string | null;
+  } | null;
   _count?: {
     savedCoupons?: number;
     couponRedemptions?: number;
   };
 }
 
+function formatCoordinate(value: ApiUserRecord["latitude"]) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric.toFixed(4);
+}
+
 function mapUser(record: ApiUserRecord): AppUser {
   const fallbackName = record.email?.split("@")[0] || record.phoneNumber || "Unknown User";
+  const latitude = formatCoordinate(record.latitude);
+  const longitude = formatCoordinate(record.longitude);
+  const locationCoordinates = latitude && longitude ? `${latitude}, ${longitude}` : "";
+  const locationName = [record.area?.name, record.area?.city || record.area?.state]
+    .filter(Boolean)
+    .join(", ");
+
   return {
     id: record.id,
     name: record.fullName?.trim() || fallbackName,
@@ -44,6 +69,9 @@ function mapUser(record: ApiUserRecord): AppUser {
         : record.status === "SUSPENDED"
           ? "Suspended"
           : "Banned",
+    locationName: locationName || (locationCoordinates ? "Current GPS" : "Not synced"),
+    locationCoordinates,
+    hasLocation: Boolean(locationName || locationCoordinates),
   };
 }
 

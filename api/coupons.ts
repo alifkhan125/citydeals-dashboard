@@ -82,4 +82,5 @@ export const couponsApi = {
   update: ({ id, payload }: { id: string; payload: Partial<CouponPayload> }) =>
     apiClient.patch(`/coupons/${id}`, payload),
   delete: (id: string) => apiClient.delete(`/coupons/${id}`),
+  notifyNearby: (id: string) => apiClient.post<{ sent: number; message: string }>(`/coupons/${id}/notify-nearby`),
 };

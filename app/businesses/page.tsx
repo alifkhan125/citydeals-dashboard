@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
+import { geocodingApi } from "@/api/geocoding";
 import { uploadImage } from "@/api/upload";
 import {
   type AreaOption,
@@ -62,6 +64,7 @@ export default function BusinessesPage() {
   const [tiktokUrl, setTikTokUrl] = useState("");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
+  const [isGeocoding, setIsGeocoding] = useState(false);
 
   // Close action menus when clicking outside
   useEffect(() => {
@@ -87,6 +90,31 @@ export default function BusinessesPage() {
   function showToast(message: string) {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
+  }
+
+  async function handleFindCoordinates() {
+    const selectedArea = areas.find((a) => a.id === areaId);
+    const query = [address, selectedArea?.name, selectedArea?.city]
+      .filter(Boolean)
+      .join(", ");
+
+    if (!query.trim()) {
+      showToast("Enter an address or select an area first");
+      return;
+    }
+
+    try {
+      setIsGeocoding(true);
+      const result = await geocodingApi.search(query);
+      setLatitude(String(result.latitude));
+      setLongitude(String(result.longitude));
+      showToast(`Found coordinates using ${result.provider}`);
+    } catch (error) {
+      console.error("Failed to find coordinates:", error);
+      showToast(getErrorMessage(error, "No coordinates found for this address"));
+    } finally {
+      setIsGeocoding(false);
+    }
   }
 
   function getErrorMessage(error: unknown, fallback: string) {
@@ -805,10 +833,21 @@ export default function BusinessesPage() {
                 </span>
               </label>
 
+              <div className="md:col-span-12 -mt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleFindCoordinates}
+                  disabled={isGeocoding || (!address.trim() && !areaId)}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isGeocoding ? "Finding location..." : "Find coordinates from address"}
+                </button>
+              </div>
+
               {/* Coordinates (Latitude & Longitude) */}
               <label className="grid min-w-0 gap-1 md:col-span-6">
                 <span className="text-xs font-medium text-slate-700">
-                  Latitude (অক্ষাংশ)
+                  Latitude
                 </span>
                 <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
                   <input
@@ -824,7 +863,7 @@ export default function BusinessesPage() {
 
               <label className="grid min-w-0 gap-1 md:col-span-6">
                 <span className="text-xs font-medium text-slate-700">
-                  Longitude (দ্রাঘিমাংশ)
+                  Longitude
                 </span>
                 <span className="flex h-10 min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 focus-within:border-[#f97316] focus-within:bg-white transition">
                   <input
@@ -840,7 +879,7 @@ export default function BusinessesPage() {
 
               <div className="md:col-span-12 -mt-1 mb-1 flex flex-wrap items-center justify-between gap-1 text-[11px] text-slate-500">
                 <p>
-                  ⚡ Area সিলেক্ট করলেই অক্ষাংশ ও দ্রাঘিমাংশ স্বয়ংক্রিয়ভাবে বসে যাবে। প্রয়োজন হলে নির্দিষ্ট দোকানের লোকেশন অনুযায়ী পরিবর্তন করতে পারেন।
+                  Area selection automatically fills latitude and longitude. You can adjust them for the exact store location if needed.
                 </p>
                 {areaId && (
                   <button
@@ -850,7 +889,7 @@ export default function BusinessesPage() {
                       if (selectedArea) {
                         setLatitude(selectedArea.latitude != null ? String(selectedArea.latitude) : "");
                         setLongitude(selectedArea.longitude != null ? String(selectedArea.longitude) : "");
-                        showToast("Area এর স্থানাঙ্ক দিয়ে অটো-ফিল করা হয়েছে");
+                        showToast("Filled coordinates from the selected area");
                       }
                     }}
                     className="shrink-0 font-medium text-[#f97316] hover:underline cursor-pointer"
@@ -858,6 +897,14 @@ export default function BusinessesPage() {
                     🔄 Reset to Area
                   </button>
                 )}
+              </div>
+
+              <div className="md:col-span-12">
+                <OpenStreetMapPreview
+                  latitude={latitude}
+                  longitude={longitude}
+                  label={name || address || "Business location"}
+                />
               </div>
 
               {/* Phone & Email */}

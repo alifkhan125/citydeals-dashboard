@@ -11,6 +11,19 @@ function getUserInitial(user?: Pick<AppUser, "name" | "email"> | null) {
   return (user?.name?.trim()?.[0] || user?.email?.trim()?.[0] || "U").toUpperCase();
 }
 
+function UserLocation({ user }: { user: AppUser }) {
+  return (
+    <div className="min-w-0">
+      <span className="block truncate text-sm font-normal leading-5 text-slate-900">
+        {user.locationName || "Unknown Location"}
+      </span>
+      <small className="block truncate text-xs leading-4 text-[#475569]">
+        {user.locationCoordinates || "No GPS yet"}
+      </small>
+    </div>
+  );
+}
+
 export default function UsersPage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
@@ -147,6 +160,15 @@ export default function UsersPage() {
                   <span className="text-slate-500">Joined</span>
                   <strong className="text-right font-medium text-slate-900">{user.joined}</strong>
                 </div>
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500">Location</span>
+                  <div className="min-w-0 flex flex-col items-end text-right font-medium text-slate-900">
+                    <span className="truncate w-full text-sm">{user.locationName || "Unknown Location"}</span>
+                    <span className="truncate w-full text-xs font-normal text-slate-500">
+                      {user.locationCoordinates || "No GPS yet"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -187,9 +209,10 @@ export default function UsersPage() {
         <div className="mt-4 hidden overflow-x-auto rounded-lg border border-slate-200 lg:block">
           <div className="min-w-[880px]">
             {/* Table Header */}
-            <div className="grid h-[55px] grid-cols-[minmax(180px,1.2fr)_minmax(200px,1.3fr)_140px_100px_140px_110px_70px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
+            <div className="grid h-[55px] grid-cols-[minmax(180px,1.15fr)_minmax(190px,1.2fr)_minmax(170px,1.1fr)_120px_80px_120px_110px_70px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
               <div className="border-r border-slate-300 px-4">User</div>
               <div className="border-r border-slate-300 px-4">Contact</div>
+              <div className="border-r border-slate-300 px-4">Location</div>
               <div className="border-r border-slate-300 px-4">Joined</div>
               <div className="border-r border-slate-300 px-4">Saved</div>
               <div className="border-r border-slate-300 px-4">Redeemed</div>
@@ -200,7 +223,7 @@ export default function UsersPage() {
             {/* Table Body */}
             {users.map((user) => (
               <div
-                className="grid h-[58px] grid-cols-[minmax(180px,1.2fr)_minmax(200px,1.3fr)_140px_100px_140px_110px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
+                className="grid min-h-[62px] grid-cols-[minmax(180px,1.15fr)_minmax(190px,1.2fr)_minmax(170px,1.1fr)_120px_80px_120px_110px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
                 key={user.id}
               >
                 {/* User column (Name & Email) */}
@@ -221,6 +244,11 @@ export default function UsersPage() {
                   <small className="block truncate text-xs leading-4 text-[#475569]">
                     {user.email}
                   </small>
+                </div>
+
+                {/* Location column */}
+                <div className="min-w-0 px-4">
+                  <UserLocation user={user} />
                 </div>
 
                 {/* Joined column */}
@@ -402,6 +430,15 @@ export default function UsersPage() {
               <div className="flex justify-between border-b border-slate-100 pb-2 text-xs">
                 <span className="text-slate-500">Email Address</span>
                 <strong className="font-medium text-slate-900">{selectedUser.email}</strong>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2 text-xs">
+                <span className="text-slate-500">Location</span>
+                <div className="min-w-0 flex flex-col items-end text-right font-medium text-slate-900">
+                  <span className="truncate w-full">{selectedUser.locationName || "Unknown Location"}</span>
+                  <span className="truncate w-full text-[10px] font-normal text-slate-500">
+                    {selectedUser.locationCoordinates || "No GPS yet"}
+                  </span>
+                </div>
               </div>
               <div className="flex justify-between text-xs pt-0.5">
                 <span className="text-slate-500">Account Status</span>

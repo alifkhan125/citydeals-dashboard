@@ -13,6 +13,7 @@ import {
   useCreateCoupon,
   useDeleteCoupon,
   useUpdateCoupon,
+  useNotifyNearbyCoupon,
 } from "@/hooks/useCoupons";
 
 const assetBase = "/assets/dashboard/";
@@ -24,6 +25,7 @@ export default function CouponsPage() {
   const createCouponMutation = useCreateCoupon();
   const updateCouponMutation = useUpdateCoupon();
   const deleteCouponMutation = useDeleteCoupon();
+  const notifyCouponMutation = useNotifyNearbyCoupon();
   const loading = isCouponsLoading || isMerchantsLoading || isCategoriesLoading;
   const saving = createCouponMutation.isPending || updateCouponMutation.isPending;
 
@@ -31,6 +33,7 @@ export default function CouponsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [editingCoupon, setEditingCoupon] = useState<CouponItem | null>(null);
+  const [couponToNotify, setCouponToNotify] = useState<CouponItem | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [merchantFilter, setMerchantFilter] = useState("All merchants");
@@ -155,6 +158,26 @@ export default function CouponsPage() {
       onError: (error) => {
         console.error("Failed to delete coupon:", error);
         showToast(getErrorMessage(error, "Failed to delete coupon"));
+      },
+    });
+  }
+
+  function handleNotifyNearby(coupon: CouponItem) {
+    setOpenActionId(null);
+    setCouponToNotify(coupon);
+  }
+
+  async function confirmNotifyNearby() {
+    if (!couponToNotify) return;
+    notifyCouponMutation.mutate(couponToNotify.id, {
+      onSuccess: (data: any) => {
+        showToast(data?.message || `Notification sent to nearby users`);
+        setCouponToNotify(null);
+      },
+      onError: (error) => {
+        console.error("Failed to send notification:", error);
+        showToast(getErrorMessage(error, "Failed to send notification"));
+        setCouponToNotify(null);
       },
     });
   }
@@ -565,6 +588,13 @@ export default function CouponsPage() {
                             {coupon.status === "ACTIVE" ? "Unpublish" : "Publish"}
                           </button>
                           <button
+                            className="block w-full px-3.5 py-2 text-left text-blue-600 hover:bg-blue-50"
+                            type="button"
+                            onClick={() => handleNotifyNearby(coupon)}
+                          >
+                            Notify Nearby
+                          </button>
+                          <button
                             className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
                             type="button"
                             onClick={() => handleDeleteCoupon(coupon)}
@@ -736,6 +766,13 @@ export default function CouponsPage() {
                             onClick={() => handleToggleStatus(coupon)}
                           >
                             {coupon.status === "ACTIVE" ? "Unpublish" : "Publish"}
+                          </button>
+                          <button
+                            className="block w-full px-3.5 py-2 text-left text-blue-600 hover:bg-blue-50"
+                            type="button"
+                            onClick={() => handleNotifyNearby(coupon)}
+                          >
+                            Notify Nearby
                           </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-red-600 hover:bg-red-50"
@@ -963,6 +1000,36 @@ export default function CouponsPage() {
           {toastMessage}
         </div>
       )}
+
+      {/* Confirmation Modal for Notify Nearby */}
+      <Modal
+        isOpen={!!couponToNotify}
+        onClose={() => !notifyCouponMutation.isPending && setCouponToNotify(null)}
+        title="Send Notification"
+        maxWidth="max-w-[420px]"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm leading-6 text-slate-600">
+            Are you sure you want to send a push notification to all users within 3km of <strong>{couponToNotify?.merchant?.name || "this merchant"}</strong> for the offer <strong>{couponToNotify?.title}</strong>?
+          </p>
+          <div className="mt-2 flex justify-end gap-3">
+            <button
+              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
+              onClick={() => setCouponToNotify(null)}
+              disabled={notifyCouponMutation.isPending}
+            >
+              Cancel
+            </button>
+            <button
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+              onClick={confirmNotifyNearby}
+              disabled={notifyCouponMutation.isPending}
+            >
+              {notifyCouponMutation.isPending ? "Sending..." : "Yes, Send"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

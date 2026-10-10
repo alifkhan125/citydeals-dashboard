@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
 import { type AreaItem, type AreaPayload } from "@/api/areas";
+import { geocodingApi } from "@/api/geocoding";
 import { useAreas, useCreateArea, useDeleteArea, useUpdateArea } from "@/hooks/useAreas";
 
 export default function AreasPage() {
@@ -24,11 +26,84 @@ export default function AreasPage() {
   const [state, setState] = useState("Madrid");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [areaSearch, setAreaSearch] = useState("");
+  const [areaSuggestions, setAreaSuggestions] = useState<
+    Awaited<ReturnType<typeof geocodingApi.suggestions>>
+  >([]);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
   function showToast(message: string) {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 2500);
+  }
+
+  async function handleFindAreaCoordinates() {
+    const query = [areaName, city, state].filter(Boolean).join(", ");
+    if (!query.trim()) {
+      showToast("Enter an area name or city first");
+      return;
+    }
+
+    try {
+      setIsGeocoding(true);
+      const result = await geocodingApi.search(query);
+      setLatitude(String(result.latitude));
+      setLongitude(String(result.longitude));
+      showToast(`Found coordinates using ${result.provider}`);
+    } catch (error) {
+      console.error("Failed to find area coordinates:", error);
+      showToast(getErrorMessage(error, "No coordinates found for this area"));
+    } finally {
+      setIsGeocoding(false);
+    }
+  }
+
+  function setGeneratedSlug(value: string) {
+    if (!editingArea && !isSlugManuallyEdited) {
+      setAreaSlug(
+        value
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+      );
+    }
+  }
+
+  async function handleSearchAreaSuggestions() {
+    const query = areaSearch.trim() || [areaName, city, state].filter(Boolean).join(", ");
+    if (!query.trim()) {
+      showToast("Enter a location to search");
+      return;
+    }
+
+    try {
+      setIsGeocoding(true);
+      const results = await geocodingApi.suggestions(query);
+      setAreaSuggestions(results);
+      if (results.length === 0) {
+        showToast("No location suggestions found");
+      }
+    } catch (error) {
+      console.error("Failed to search area suggestions:", error);
+      showToast(getErrorMessage(error, "Could not search locations"));
+    } finally {
+      setIsGeocoding(false);
+    }
+  }
+
+  function handleSelectSuggestion(result: Awaited<ReturnType<typeof geocodingApi.suggestions>>[number]) {
+    const nextName = result.name || areaName || result.city || "New Area";
+    setAreaName(nextName);
+    setGeneratedSlug(nextName);
+    if (result.city) setCity(result.city);
+    if (result.state) setState(result.state);
+    setLatitude(String(result.latitude));
+    setLongitude(String(result.longitude));
+    setAreaSearch(result.label);
+    setAreaSuggestions([]);
+    showToast("Location selected from OpenStreetMap");
   }
 
   function getErrorMessage(error: unknown, fallback: string) {
@@ -44,15 +119,7 @@ export default function AreasPage() {
 
   const handleAreaNameChange = (value: string) => {
     setAreaName(value);
-    if (!editingArea && !isSlugManuallyEdited) {
-      setAreaSlug(
-        value
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")
-      );
-    }
+    setGeneratedSlug(value);
   };
 
   const handleAreaSlugChange = (value: string) => {
@@ -74,6 +141,8 @@ export default function AreasPage() {
     setState("Madrid");
     setLatitude("");
     setLongitude("");
+    setAreaSearch("");
+    setAreaSuggestions([]);
     setIsAddAreaOpen(true);
   };
 
@@ -87,6 +156,8 @@ export default function AreasPage() {
     setState(area.state);
     setLatitude(area.latitude != null ? String(area.latitude) : "");
     setLongitude(area.longitude != null ? String(area.longitude) : "");
+    setAreaSearch([area.name, area.city, area.state].filter(Boolean).join(", "));
+    setAreaSuggestions([]);
     setIsAddAreaOpen(true);
   };
 
@@ -100,6 +171,8 @@ export default function AreasPage() {
     setState("Madrid");
     setLatitude("");
     setLongitude("");
+    setAreaSearch("");
+    setAreaSuggestions([]);
   };
 
   const handleSaveArea = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -360,7 +433,7 @@ export default function AreasPage() {
             ? `Update ${editingArea.name} directory`
             : "Create a new city directory for the mobile app"
         }
-        maxWidth="max-w-[500px]"
+        maxWidth="max-w-[760px]"
       >
         <form className="flex flex-col gap-4" onSubmit={handleSaveArea}>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -410,6 +483,17 @@ export default function AreasPage() {
                 </label>
               </div>
 
+              <div className="-mt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleFindAreaCoordinates}
+                  disabled={isGeocoding || (!areaName.trim() && !city.trim())}
+                  className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isGeocoding ? "Finding location..." : "Find center coordinates"}
+                </button>
+              </div>
+
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="grid gap-1">
                   <span className="text-sm leading-5 text-slate-900">Center Latitude</span>
@@ -436,8 +520,63 @@ export default function AreasPage() {
                 </label>
               </div>
               <p className="text-xs text-slate-500 -mt-1">
-                📍 এই এরিয়ার কেন্দ্রীয় স্থানাঙ্ক। নতুন কোনো ব্যবসায় নিজস্ব স্থানাঙ্ক না দিলে স্বয়ংক্রিয়ভাবে এটি ব্যবহৃত হবে।
+                Center coordinates for this area. New businesses will use these coordinates automatically when no specific store location is provided.
               </p>
+
+              <OpenStreetMapPreview
+                latitude={latitude}
+                longitude={longitude}
+                label={areaName || city || "Area center"}
+                searchSlot={
+                  <div className="rounded-xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur">
+                    <div className="flex gap-2">
+                      <input
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400"
+                        placeholder="Search area, city, neighborhood..."
+                        value={areaSearch}
+                        onChange={(event) => setAreaSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            handleSearchAreaSuggestions();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSearchAreaSuggestions}
+                        disabled={isGeocoding}
+                        className="h-10 shrink-0 rounded-lg bg-[#f97316] px-3 text-xs font-semibold text-white shadow-sm transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isGeocoding ? "..." : "Search"}
+                      </button>
+                    </div>
+                    {areaSuggestions.length > 0 && (
+                      <div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                        {areaSuggestions.map((item) => (
+                          <button
+                            key={`${item.latitude}-${item.longitude}-${item.label}`}
+                            type="button"
+                            onClick={() => handleSelectSuggestion(item)}
+                            className="block w-full border-b border-slate-100 px-3 py-2 text-left text-xs text-slate-700 transition last:border-b-0 hover:bg-orange-50"
+                          >
+                            <span className="block font-medium text-slate-900">
+                              {item.name || item.city || "Location"}
+                            </span>
+                            <span className="mt-0.5 block line-clamp-2 text-slate-500">
+                              {item.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                }
+                onPick={(coords) => {
+                  setLatitude(String(coords.latitude));
+                  setLongitude(String(coords.longitude));
+                }}
+              />
             </div>
           </div>
 

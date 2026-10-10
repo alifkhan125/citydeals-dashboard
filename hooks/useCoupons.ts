@@ -71,3 +71,9 @@ export function useDeleteCoupon() {
     },
   });
 }
+
+export function useNotifyNearbyCoupon() {
+  return useMutation({
+    mutationFn: couponsApi.notifyNearby,
+  });
+}
