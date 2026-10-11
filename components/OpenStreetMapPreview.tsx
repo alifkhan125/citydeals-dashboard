@@ -149,6 +149,7 @@ function OpenStreetMapPicker({
   const [zoom, setZoom] = useState(hasCoordinates ? 13 : 2);
   const [center, setCenter] = useState({ latitude, longitude });
   const hadCoordinates = useRef(hasCoordinates);
+  const skipNextCoordinateSync = useRef(false);
   const [drag, setDrag] = useState<{
     pointerId: number;
     startX: number;
@@ -161,15 +162,17 @@ function OpenStreetMapPicker({
   const maxZoom = 20;
 
   useEffect(() => {
-    if (drag) return;
+    if (skipNextCoordinateSync.current) {
+      skipNextCoordinateSync.current = false;
+      return;
+    }
     // Keep the map centered when the form/search changes coordinates outside drag.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCenter({ latitude, longitude });
     if (hasCoordinates && !hadCoordinates.current) {
       setZoom((current) => Math.max(current, 13));
     }
     hadCoordinates.current = hasCoordinates;
-  }, [drag, hasCoordinates, latitude, longitude]);
+  }, [hasCoordinates, latitude, longitude]);
 
   const centerX = lonToTileX(center.longitude, zoom);
   const centerY = latToTileY(center.latitude, zoom);
@@ -201,6 +204,7 @@ function OpenStreetMapPicker({
 
   function pickCoordinates(nextLatitude: number, nextLongitude: number) {
     const coords = createPickedCoordinates(nextLatitude, nextLongitude);
+    skipNextCoordinateSync.current = true;
     onPick(coords);
   }
 
@@ -305,15 +309,15 @@ function OpenStreetMapPicker({
 
         {hasCoordinates ? (
           <span
-            className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center transition-transform duration-100 ease-out"
+            className="absolute left-1/2 top-1/2 z-10 grid -translate-x-1/2 -translate-y-1/2 place-items-center transition-transform duration-100 ease-out"
             style={{
-              transform: `translate(calc(-50% + ${markerOffsetX}px), calc(-100% + ${markerOffsetY}px))`,
+              transform: `translate(calc(-50% + ${markerOffsetX}px), calc(-50% + ${markerOffsetY}px))`,
             }}
           >
-            <span className="grid size-8 place-items-center rounded-full bg-[#f97316] text-sm font-bold text-white shadow-lg">
-              •
+            <span className="absolute size-10 rounded-full border-2 border-white bg-[#f97316]/20 shadow-lg" />
+            <span className="grid size-7 place-items-center rounded-full border-2 border-white bg-[#f97316] shadow-md">
+              <span className="size-2 rounded-full bg-white" />
             </span>
-            <span className="h-4 w-0.5 bg-[#f97316]" />
           </span>
         ) : (
           <span className="absolute inset-x-4 top-4 z-10 rounded-lg bg-white/95 px-3 py-2 text-center text-xs font-medium text-slate-600 shadow">
