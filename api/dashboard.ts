@@ -47,6 +47,7 @@ export const emptyDashboardStats: DashboardStats = {
 };
 
 export const dashboardApi = {
+  overview: () => apiClient.get<unknown, DashboardOverview>("/admin/dashboard/overview"),
   stats: () => apiClient.get<unknown, DashboardStats>("/admin/dashboard/stats"),
   trendingCoupons: () =>
     apiClient.get<unknown, TrendingCoupon[]>("/admin/dashboard/trending-coupons"),
@@ -54,7 +55,7 @@ export const dashboardApi = {
     apiClient.get<unknown, AreaRedemption[]>("/admin/dashboard/redemptions/by-area"),
   dailyRedemptions: () =>
     apiClient.get<unknown, DailyRedemptionPoint[]>("/admin/dashboard/redemptions/daily"),
-  overview: async (): Promise<DashboardOverview> => {
+  overviewFallback: async (): Promise<DashboardOverview> => {
     const [stats, trending, areaRedemptions, dailyRedemptions] = await Promise.all([
       dashboardApi.stats().catch(() => emptyDashboardStats),
       dashboardApi.trendingCoupons().catch(() => []),

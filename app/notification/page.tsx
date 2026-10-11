@@ -103,10 +103,24 @@ export default function SendNotificationPage() {
       const recipientCount = res?.recipients ?? 0;
       const pushSent = res?.push?.sent ?? 0;
       const pushSkipped = res?.push?.skipped ?? 0;
+      const missingTokens = res?.push?.missingTokens ?? 0;
+      const fcmConfigured = res?.push?.fcm?.configured;
+      const firstFailure = res?.push?.fcm?.failures?.[0]?.message ?? res?.push?.error;
+      const pushStatus =
+        pushSent > 0
+          ? `Push sent: ${pushSent}, skipped: ${pushSkipped}.`
+          : fcmConfigured === false
+            ? "Push not sent: Firebase service account is not configured."
+            : missingTokens >= recipientCount
+              ? "Push not sent: selected users do not have device tokens yet."
+              : firstFailure
+                ? `Push failed: ${firstFailure}`
+                : `Push sent: ${pushSent}, skipped: ${pushSkipped}.`;
+
       showToast(
         `Notification saved for ${recipientCount} user${
           recipientCount === 1 ? "" : "s"
-        }. Push sent: ${pushSent}, skipped: ${pushSkipped}.`
+        }. ${pushStatus}`
       );
 
       // Reset main inputs

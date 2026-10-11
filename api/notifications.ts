@@ -49,6 +49,21 @@ export interface SendNotificationResponse {
   push?: {
     sent?: number;
     skipped?: number;
+    totalRecipients?: number;
+    usersWithTokens?: number;
+    missingTokens?: number;
+    error?: string;
+    fcm?: {
+      sent?: number;
+      skipped?: number;
+      configured?: boolean;
+      missingTokens?: number;
+      failures?: Array<{ index: number; message: string }>;
+    };
+    expo?: {
+      sent?: number;
+      skipped?: number;
+    };
   };
 }
 
