@@ -48,8 +48,8 @@ export default function AreasPage() {
     try {
       setIsGeocoding(true);
       const result = await geocodingApi.search(query);
-      setLatitude(String(result.latitude));
-      setLongitude(String(result.longitude));
+      setLatitude(Number(result.latitude).toFixed(6));
+      setLongitude(Number(result.longitude).toFixed(6));
       showToast(`Found coordinates using ${result.provider}`);
     } catch (error) {
       console.error("Failed to find area coordinates:", error);
@@ -99,8 +99,8 @@ export default function AreasPage() {
     setGeneratedSlug(nextName);
     if (result.city) setCity(result.city);
     if (result.state) setState(result.state);
-    setLatitude(String(result.latitude));
-    setLongitude(String(result.longitude));
+    setLatitude(Number(result.latitude).toFixed(6));
+    setLongitude(Number(result.longitude).toFixed(6));
     setAreaSearch(result.label);
     setAreaSuggestions([]);
     showToast("Location selected from OpenStreetMap");
@@ -154,8 +154,8 @@ export default function AreasPage() {
     setIsSlugManuallyEdited(true);
     setCity(area.city);
     setState(area.state);
-    setLatitude(area.latitude != null ? String(area.latitude) : "");
-    setLongitude(area.longitude != null ? String(area.longitude) : "");
+    setLatitude(area.latitude != null ? Number(area.latitude).toFixed(6) : "");
+    setLongitude(area.longitude != null ? Number(area.longitude).toFixed(6) : "");
     setAreaSearch([area.name, area.city, area.state].filter(Boolean).join(", "));
     setAreaSuggestions([]);
     setIsAddAreaOpen(true);
@@ -501,7 +501,7 @@ export default function AreasPage() {
                     type="number"
                     step="any"
                     className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
-                    placeholder="e.g. 40.4168"
+                    placeholder="e.g. 23.780945"
                     value={latitude}
                     onChange={(event) => setLatitude(event.target.value)}
                   />
@@ -513,7 +513,7 @@ export default function AreasPage() {
                     type="number"
                     step="any"
                     className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-orange-400 focus:bg-white"
-                    placeholder="e.g. -3.7038"
+                    placeholder="e.g. 90.407512"
                     value={longitude}
                     onChange={(event) => setLongitude(event.target.value)}
                   />
@@ -573,8 +573,8 @@ export default function AreasPage() {
                   </div>
                 }
                 onPick={(coords) => {
-                  setLatitude(String(coords.latitude));
-                  setLongitude(String(coords.longitude));
+                  setLatitude(coords.latitude.toFixed(6));
+                  setLongitude(coords.longitude.toFixed(6));
                 }}
               />
             </div>

@@ -264,14 +264,6 @@ export default function CouponsPage() {
     );
   }
 
-  async function exportExcel() {
-    const XLSX = await import("xlsx");
-    const worksheet = XLSX.utils.json_to_sheet(getExportRows());
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Coupon Report");
-    XLSX.writeFile(workbook, getExportFileName("xlsx"));
-  }
-
   async function exportPdf() {
     const [{ jsPDF }, autoTableModule] = await Promise.all([
       import("jspdf"),
@@ -307,7 +299,7 @@ export default function CouponsPage() {
     doc.save(getExportFileName("pdf"));
   }
 
-  async function handleExport(format: "CSV" | "Excel" | "PDF") {
+  async function handleExport(format: "CSV" | "PDF") {
     if (filteredCoupons.length === 0) {
       showToast("No coupon data to export");
       return;
@@ -316,8 +308,6 @@ export default function CouponsPage() {
     try {
       if (format === "CSV") {
         exportCsv();
-      } else if (format === "Excel") {
-        await exportExcel();
       } else {
         await exportPdf();
       }
@@ -500,7 +490,7 @@ export default function CouponsPage() {
             </label>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-            {(["CSV", "Excel", "PDF"] as const).map((format) => (
+            {(["CSV", "PDF"] as const).map((format) => (
               <button
                 className="h-10 min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium leading-none text-slate-700 hover:bg-slate-100 sm:px-3 sm:text-sm"
                 key={format}

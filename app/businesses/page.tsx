@@ -106,8 +106,8 @@ export default function BusinessesPage() {
     try {
       setIsGeocoding(true);
       const result = await geocodingApi.search(query);
-      setLatitude(String(result.latitude));
-      setLongitude(String(result.longitude));
+      setLatitude(Number(result.latitude).toFixed(6));
+      setLongitude(Number(result.longitude).toFixed(6));
       showToast(`Found coordinates using ${result.provider}`);
     } catch (error) {
       console.error("Failed to find coordinates:", error);
@@ -145,10 +145,10 @@ export default function BusinessesPage() {
     const selectedArea = areas.find((a) => a.id === newAreaId);
     if (selectedArea) {
       if (selectedArea.latitude != null && String(selectedArea.latitude).trim() !== "") {
-        setLatitude(String(selectedArea.latitude));
+        setLatitude(Number(selectedArea.latitude).toFixed(6));
       }
       if (selectedArea.longitude != null && String(selectedArea.longitude).trim() !== "") {
-        setLongitude(String(selectedArea.longitude));
+        setLongitude(Number(selectedArea.longitude).toFixed(6));
       }
     }
   }
@@ -171,10 +171,10 @@ export default function BusinessesPage() {
     setFacebookUrl("");
     setTikTokUrl("");
     setLatitude(
-      defaultArea?.latitude != null ? String(defaultArea.latitude) : ""
+      defaultArea?.latitude != null ? Number(defaultArea.latitude).toFixed(6) : ""
     );
     setLongitude(
-      defaultArea?.longitude != null ? String(defaultArea.longitude) : ""
+      defaultArea?.longitude != null ? Number(defaultArea.longitude).toFixed(6) : ""
     );
     setLogoFile(null);
     setLogoPreview(null);
@@ -194,15 +194,15 @@ export default function BusinessesPage() {
     const matchedArea = areas.find((a) => a.id === selectedAreaId);
     const effectiveLat =
       business.latitude != null && String(business.latitude).trim() !== ""
-        ? String(business.latitude)
+        ? Number(business.latitude).toFixed(6)
         : matchedArea?.latitude != null
-        ? String(matchedArea.latitude)
+        ? Number(matchedArea.latitude).toFixed(6)
         : "";
     const effectiveLon =
       business.longitude != null && String(business.longitude).trim() !== ""
-        ? String(business.longitude)
+        ? Number(business.longitude).toFixed(6)
         : matchedArea?.longitude != null
-        ? String(matchedArea.longitude)
+        ? Number(matchedArea.longitude).toFixed(6)
         : "";
 
     setLatitude(effectiveLat);
@@ -522,7 +522,7 @@ export default function BusinessesPage() {
                       <p className="mt-0.5 text-slate-900">{location.address || "—"}</p>
                       {location.latitude != null && location.longitude != null && (
                         <p className="mt-0.5 text-xs text-slate-400">
-                          📍 {Number(location.latitude).toFixed(4)}, {Number(location.longitude).toFixed(4)}
+                          📍 {Number(location.latitude).toFixed(6)}, {Number(location.longitude).toFixed(6)}
                         </p>
                       )}
                     </div>
@@ -610,7 +610,7 @@ export default function BusinessesPage() {
                     </p>
                     {location.latitude != null && location.longitude != null && (
                       <span className="block truncate text-[11px] text-slate-400">
-                        📍 {Number(location.latitude).toFixed(4)}, {Number(location.longitude).toFixed(4)}
+                        📍 {Number(location.latitude).toFixed(6)}, {Number(location.longitude).toFixed(6)}
                       </span>
                     )}
                   </div>
@@ -887,8 +887,8 @@ export default function BusinessesPage() {
                     onClick={() => {
                       const selectedArea = areas.find((a) => a.id === areaId);
                       if (selectedArea) {
-                        setLatitude(selectedArea.latitude != null ? String(selectedArea.latitude) : "");
-                        setLongitude(selectedArea.longitude != null ? String(selectedArea.longitude) : "");
+                        setLatitude(selectedArea.latitude != null ? Number(selectedArea.latitude).toFixed(6) : "");
+                        setLongitude(selectedArea.longitude != null ? Number(selectedArea.longitude).toFixed(6) : "");
                         showToast("Filled coordinates from the selected area");
                       }
                     }}
@@ -904,6 +904,10 @@ export default function BusinessesPage() {
                   latitude={latitude}
                   longitude={longitude}
                   label={name || address || "Business location"}
+                  onPick={(coords) => {
+                    setLatitude(coords.latitude.toFixed(6));
+                    setLongitude(coords.longitude.toFixed(6));
+                  }}
                 />
               </div>
 

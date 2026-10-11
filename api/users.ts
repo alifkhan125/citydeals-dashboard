@@ -39,7 +39,7 @@ function formatCoordinate(value: ApiUserRecord["latitude"]) {
   if (value === null || value === undefined || value === "") return null;
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
-  return numeric.toFixed(4);
+  return numeric.toFixed(6);
 }
 
 function mapUser(record: ApiUserRecord): AppUser {

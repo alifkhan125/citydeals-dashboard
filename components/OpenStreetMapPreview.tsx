@@ -84,7 +84,7 @@ export default function OpenStreetMapPreview({
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-3 py-2 text-xs">
         <span className="text-slate-500">
-          OpenStreetMap preview: {lat.toFixed(5)}, {lon.toFixed(5)}
+          OpenStreetMap preview: {lat.toFixed(6)}, {lon.toFixed(6)}
         </span>
         <a
           className="font-medium text-[#f97316] hover:underline"
@@ -360,7 +360,7 @@ function OpenStreetMapPicker({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-3 py-2 text-xs">
         <span className="text-slate-500">
           {hasCoordinates
-            ? `Selected: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
+            ? `Selected: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
             : "No coordinates selected yet"}
         </span>
         <a

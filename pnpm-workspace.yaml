@@ -1,3 +1,6 @@
 allowBuilds:
   core-js: false
   unrs-resolver: true
+overrides:
+  sharp: ^0.35.5
+  source-map-js: ^1.2.2
