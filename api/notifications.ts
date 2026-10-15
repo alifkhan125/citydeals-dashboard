@@ -67,6 +67,13 @@ export interface SendNotificationResponse {
   };
 }
 
+export interface BirthdaySettings {
+  enabled: boolean;
+  category: string;
+  leadTime: string;
+  lastRunAt?: string | null;
+}
+
 export const notificationsApi = {
   history: async (): Promise<NotificationRecord[]> => {
     const res = await apiClient.get<unknown, { items?: NotificationRecord[] }>("/notifications/admin/history");
@@ -82,4 +89,13 @@ export const notificationsApi = {
   },
   send: (payload: SendNotificationPayload) =>
     apiClient.post<unknown, SendNotificationResponse>("/notifications/send", payload),
+  getBirthdaySettings: async (): Promise<BirthdaySettings> => {
+    return apiClient.get<unknown, BirthdaySettings>("/notifications/birthday-settings");
+  },
+  updateBirthdaySettings: async (settings: BirthdaySettings): Promise<{ settings: BirthdaySettings; checkResult?: any }> => {
+    return apiClient.post<unknown, { settings: BirthdaySettings; checkResult?: any }>("/notifications/birthday-settings", settings);
+  },
+  triggerBirthdayCheck: async (): Promise<any> => {
+    return apiClient.post<unknown, any>("/notifications/trigger-birthday-checks", {});
+  },
 };

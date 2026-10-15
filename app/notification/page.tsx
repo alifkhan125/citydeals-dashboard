@@ -7,6 +7,9 @@ import {
   useNotificationAreas,
   useNotificationUsers,
   useSendNotification,
+  useBirthdaySettings,
+  useUpdateBirthdaySettings,
+  useTriggerBirthdayCheck,
 } from "@/hooks/useNotifications";
 
 const birthdayOfferCategories = [
@@ -34,15 +37,34 @@ export default function SendNotificationPage() {
   const sending = sendNotificationMutation.isPending;
 
   // Birthday Perks
+  const { data: birthdaySettings } = useBirthdaySettings();
+  const updateBirthdayMutation = useUpdateBirthdaySettings();
+  const triggerBirthdayMutation = useTriggerBirthdayCheck();
+
   const [birthdayPerksEnabled, setBirthdayPerksEnabled] = useState(true);
   const [birthdayCategory, setBirthdayCategory] = useState(birthdayOfferCategories[0]);
   const [birthdayLeadTime, setBirthdayLeadTime] = useState("On birthday");
+
+  // Sync state from backend settings once loaded
+  useEffect(() => {
+    if (birthdaySettings) {
+      if (typeof birthdaySettings.enabled === "boolean") {
+        setBirthdayPerksEnabled(birthdaySettings.enabled);
+      }
+      if (birthdaySettings.category) {
+        setBirthdayCategory(birthdaySettings.category);
+      }
+      if (birthdaySettings.leadTime) {
+        setBirthdayLeadTime(birthdaySettings.leadTime);
+      }
+    }
+  }, [birthdaySettings]);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   function showToast(text: string) {
     setToastMessage(text);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 4000);
   }
 
   useEffect(() => {
@@ -132,6 +154,45 @@ export default function SendNotificationPage() {
     } catch (err: unknown) {
       console.error("Failed to send notification:", err);
       showToast(getErrorMessage(err, "Failed to send notification"));
+    }
+  }
+
+  async function handleSaveBirthdayPerks() {
+    try {
+      const res = await updateBirthdayMutation.mutateAsync({
+        enabled: birthdayPerksEnabled,
+        category: birthdayCategory,
+        leadTime: birthdayLeadTime,
+      });
+
+      const checkMsg =
+        res?.checkResult?.eligibleUsers !== undefined
+          ? ` (${res.checkResult.eligibleUsers} user${
+              res.checkResult.eligibleUsers === 1 ? "" : "s"
+            } notified right now)`
+          : "";
+
+      showToast(
+        `Birthday perks ${
+          birthdayPerksEnabled ? "enabled" : "disabled"
+        }: ${birthdayCategory}, ${birthdayLeadTime}.${checkMsg}`
+      );
+    } catch (err: unknown) {
+      showToast(getErrorMessage(err, "Failed to save birthday perks"));
+    }
+  }
+
+  async function handleTriggerBirthdayCheck() {
+    try {
+      const res = await triggerBirthdayMutation.mutateAsync();
+      const count = res?.eligibleUsers ?? res?.sent ?? 0;
+      showToast(
+        `Birthday check completed: ${count} user${
+          count === 1 ? "" : "s"
+        } found and alerted.`
+      );
+    } catch (err: unknown) {
+      showToast(getErrorMessage(err, "Failed to run birthday check"));
     }
   }
 
@@ -363,15 +424,26 @@ export default function SendNotificationPage() {
               </select>
             </label>
 
-            <button
-              className="mt-6 h-11 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-800 hover:bg-slate-100 md:mt-auto cursor-pointer"
-              type="button"
-              onClick={() =>
-                showToast(`Birthday perks saved: ${birthdayCategory}, ${birthdayLeadTime}`)
-              }
-            >
-              Save Birthday Perks
-            </button>
+            <div className="mt-6 flex flex-wrap items-center gap-2 md:mt-auto">
+              <button
+                className="h-11 flex-1 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                type="button"
+                disabled={updateBirthdayMutation.isPending}
+                onClick={handleSaveBirthdayPerks}
+              >
+                {updateBirthdayMutation.isPending ? "Saving..." : "💾 Save Birthday Perks"}
+              </button>
+
+              <button
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                type="button"
+                title="Immediately check users matching current birthday lead time and send push alerts"
+                disabled={triggerBirthdayMutation.isPending || !birthdayPerksEnabled}
+                onClick={handleTriggerBirthdayCheck}
+              >
+                {triggerBirthdayMutation.isPending ? "Testing..." : "⚡ Run Check Now"}
+              </button>
+            </div>
           </div>
         </div>
       </section>

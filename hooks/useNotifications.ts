@@ -30,3 +30,31 @@ export function useSendNotification() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.notifications.history }),
   });
 }
+
+export function useBirthdaySettings() {
+  return useQuery({
+    queryKey: ["notifications", "birthday-settings"],
+    queryFn: notificationsApi.getBirthdaySettings,
+  });
+}
+
+export function useUpdateBirthdaySettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: notificationsApi.updateBirthdaySettings,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notifications", "birthday-settings"] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.history });
+    },
+  });
+}
+
+export function useTriggerBirthdayCheck() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: notificationsApi.triggerBirthdayCheck,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.notifications.history });
+    },
+  });
+}
