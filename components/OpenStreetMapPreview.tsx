@@ -159,7 +159,8 @@ function OpenStreetMapPicker({
     moved: boolean;
   } | null>(null);
   const minZoom = 2;
-  const maxZoom = 20;
+  const maxZoom = 19;
+  const currentZoom = Math.min(maxZoom, Math.max(minZoom, zoom));
 
   useEffect(() => {
     if (skipNextCoordinateSync.current) {
@@ -169,20 +170,20 @@ function OpenStreetMapPicker({
     // Keep the map centered when the form/search changes coordinates outside drag.
     setCenter({ latitude, longitude });
     if (hasCoordinates && !hadCoordinates.current) {
-      setZoom((current) => Math.max(current, 13));
+      setZoom((current) => Math.min(maxZoom, Math.max(current, 13)));
     }
     hadCoordinates.current = hasCoordinates;
   }, [hasCoordinates, latitude, longitude]);
 
-  const centerX = lonToTileX(center.longitude, zoom);
-  const centerY = latToTileY(center.latitude, zoom);
-  const selectedX = lonToTileX(longitude, zoom);
-  const selectedY = latToTileY(latitude, zoom);
+  const centerX = lonToTileX(center.longitude, currentZoom);
+  const centerY = latToTileY(center.latitude, currentZoom);
+  const selectedX = lonToTileX(longitude, currentZoom);
+  const selectedY = latToTileY(latitude, currentZoom);
   const markerOffsetX = (selectedX - centerX) * 256;
   const markerOffsetY = (selectedY - centerY) * 256;
   const tileCount = 5;
   const tileOffset = Math.floor(tileCount / 2);
-  const maxTile = 2 ** zoom;
+  const maxTile = 2 ** currentZoom;
   const baseX = Math.floor(centerX) - tileOffset;
   const baseY = Math.floor(centerY) - tileOffset;
   const offsetX = (centerX - baseX) * 256;
@@ -227,8 +228,8 @@ function OpenStreetMapPicker({
     const nextTileX = drag.startTileX - deltaX / 256;
     const nextTileY = drag.startTileY - deltaY / 256;
     const nextCenter = {
-      latitude: clampLatitude(tileYToLat(nextTileY, zoom)),
-      longitude: normalizeLongitude(tileXToLon(nextTileX, zoom)),
+      latitude: clampLatitude(tileYToLat(nextTileY, currentZoom)),
+      longitude: normalizeLongitude(tileXToLon(nextTileX, currentZoom)),
     };
 
     setCenter(nextCenter);
@@ -249,15 +250,15 @@ function OpenStreetMapPicker({
       const nextTileX = drag.startTileX - deltaX / 256;
       const nextTileY = drag.startTileY - deltaY / 256;
       setCenter({
-        latitude: clampLatitude(tileYToLat(nextTileY, zoom)),
-        longitude: normalizeLongitude(tileXToLon(nextTileX, zoom)),
+        latitude: clampLatitude(tileYToLat(nextTileY, currentZoom)),
+        longitude: normalizeLongitude(tileXToLon(nextTileX, currentZoom)),
       });
     } else {
       const clickedX = event.clientX - rect.left;
       const clickedY = event.clientY - rect.top;
       const globalX = centerX * 256 + (clickedX - rect.width / 2);
       const globalY = centerY * 256 + (clickedY - rect.height / 2);
-      pickCoordinates(tileYToLat(globalY / 256, zoom), tileXToLon(globalX / 256, zoom));
+      pickCoordinates(tileYToLat(globalY / 256, currentZoom), tileXToLon(globalX / 256, currentZoom));
     }
     setDrag(null);
   }
@@ -266,10 +267,10 @@ function OpenStreetMapPicker({
     () =>
       `https://www.openstreetmap.org/?mlat=${encodeURIComponent(
         String(latitude),
-      )}&mlon=${encodeURIComponent(String(longitude))}#map=${zoom}/${encodeURIComponent(
+      )}&mlon=${encodeURIComponent(String(longitude))}#map=${currentZoom}/${encodeURIComponent(
         String(latitude),
       )}/${encodeURIComponent(String(longitude))}`,
-    [latitude, longitude, zoom],
+    [latitude, longitude, currentZoom],
   );
 
   return (
@@ -298,27 +299,61 @@ function OpenStreetMapPicker({
           {tiles.map((tile) => (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              key={`${tile.rawX}-${tile.rawY}-${zoom}`}
+              key={`${tile.rawX}-${tile.rawY}-${currentZoom}`}
               alt=""
               draggable={false}
-              src={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`}
+              src={`https://tile.openstreetmap.org/${currentZoom}/${tile.x}/${tile.y}.png`}
+              onError={(e) => {
+                // If a tile fails to load, gracefully hide broken image icon
+                e.currentTarget.style.opacity = "0";
+              }}
               className="size-64 select-none bg-slate-200"
             />
           ))}
         </div>
 
         {hasCoordinates ? (
-          <span
-            className="absolute left-1/2 top-1/2 z-10 grid -translate-x-1/2 -translate-y-1/2 place-items-center transition-transform duration-100 ease-out"
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2 z-10 transition-transform duration-100 ease-out"
             style={{
-              transform: `translate(calc(-50% + ${markerOffsetX}px), calc(-50% + ${markerOffsetY}px))`,
+              transform: `translate(calc(-50% + ${markerOffsetX}px), calc(-100% + ${markerOffsetY}px))`,
             }}
           >
-            <span className="absolute size-10 rounded-full border-2 border-white bg-[#f97316]/20 shadow-lg" />
-            <span className="grid size-7 place-items-center rounded-full border-2 border-white bg-[#f97316] shadow-md">
-              <span className="size-2 rounded-full bg-white" />
-            </span>
-          </span>
+            {/* Ground anchor indicator precisely at coordinate */}
+            <div className="absolute left-1/2 top-full flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
+              <span className="absolute size-4 animate-ping rounded-full bg-[#ea580c]/30 opacity-75" />
+              <span className="absolute h-1.5 w-3.5 rounded-full bg-slate-900/30 blur-[0.5px]" />
+              <span className="size-2 rounded-full bg-[#ea580c] ring-2 ring-white shadow-sm" />
+            </div>
+
+            {/* Map Pin pointing directly down to the anchor */}
+            <div className="relative flex flex-col items-center">
+              <svg
+                width="32"
+                height="42"
+                viewBox="0 0 32 42"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                className="drop-shadow-[0_4px_6px_rgba(0,0,0,0.35)]"
+              >
+                <defs>
+                  <linearGradient id="mapPinGradient" x1="16" y1="1" x2="16" y2="42" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#fb923c" />
+                    <stop offset="100%" stopColor="#ea580c" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M16 42C16 42 2 25 2 15C2 7.27 8.27 1 16 1C23.73 1 30 7.27 30 15C30 25 16 42 16 42Z"
+                  fill="url(#mapPinGradient)"
+                  stroke="#FFFFFF"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                />
+                <circle cx="16" cy="15" r="5" fill="#FFFFFF" />
+                <circle cx="16" cy="15" r="2.5" fill="#ea580c" />
+              </svg>
+            </div>
+          </div>
         ) : (
           <span className="absolute inset-x-4 top-4 z-10 rounded-lg bg-white/95 px-3 py-2 text-center text-xs font-medium text-slate-600 shadow">
             Search, click, or drag the map to pick coordinates.
@@ -336,7 +371,7 @@ function OpenStreetMapPicker({
           <button
             type="button"
             aria-label="Zoom in"
-            disabled={zoom >= maxZoom}
+            disabled={currentZoom >= maxZoom}
             onClick={() => setZoom((current) => Math.min(maxZoom, current + 1))}
             className="grid size-9 place-items-center border-b border-slate-200 text-lg font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -345,7 +380,7 @@ function OpenStreetMapPicker({
           <button
             type="button"
             aria-label="Zoom out"
-            disabled={zoom <= minZoom}
+            disabled={currentZoom <= minZoom}
             onClick={() => setZoom((current) => Math.max(minZoom, current - 1))}
             className="grid size-9 place-items-center text-xl font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -354,7 +389,7 @@ function OpenStreetMapPicker({
         </div>
 
         <div className="absolute bottom-3 left-3 z-20 rounded-md bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-600 shadow">
-          Zoom {zoom}
+          Zoom {currentZoom}
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-3 py-2 text-xs">
