@@ -1022,10 +1022,10 @@ export default function CouponsPage() {
       >
         <div className="flex flex-col gap-4">
           <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800">
-            This permanently removes <strong>{couponToDelete?.title}</strong>, including its redemption, saved, share, and view history.
+            This will archive <strong>{couponToDelete?.title}</strong>. The coupon and all related redemption, saved, share, and view history will remain in the database.
           </div>
           <p className="text-sm leading-6 text-slate-600">
-            This action cannot be undone. Continue with permanent deletion?
+            This is a soft delete, not a permanent deletion. Continue archiving this coupon?
           </p>
           <div className="mt-2 flex justify-end gap-3">
             <button
@@ -1040,7 +1040,7 @@ export default function CouponsPage() {
               onClick={confirmDeleteCoupon}
               disabled={deleteCouponMutation.isPending}
             >
-              {deleteCouponMutation.isPending ? "Deleting..." : "Delete permanently"}
+              {deleteCouponMutation.isPending ? "Archiving..." : "Archive coupon"}
             </button>
           </div>
         </div>

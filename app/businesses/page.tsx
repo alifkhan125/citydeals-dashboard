@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import DeleteWarningModal from "@/components/DeleteWarningModal";
 import { toast } from "@/components/Toast";
 import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
 import { geocodingApi } from "@/api/geocoding";
@@ -46,6 +47,7 @@ export default function BusinessesPage() {
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [businessToDelete, setBusinessToDelete] = useState<BusinessItem | null>(null);
 
   // Logo file / preview
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -259,15 +261,19 @@ export default function BusinessesPage() {
     }
   }
 
-  async function handleDeleteBusiness(business: BusinessItem) {
+  function handleDeleteBusiness(business: BusinessItem) {
     setOpenActionId(null);
-    if (!confirm(`Are you sure you want to delete ${business.name}?`)) {
-      return;
-    }
+    setBusinessToDelete(business);
+  }
+
+  async function confirmDeleteBusiness() {
+    if (!businessToDelete) return;
+    const business = businessToDelete;
 
     try {
       await deleteBusinessMutation.mutateAsync(business.id);
       toast.success(`Deleted ${business.name}`, { title: "Business Deleted" });
+      setBusinessToDelete(null);
     } catch (error) {
       console.error("Failed to delete business:", error);
       toast.error(getErrorMessage(error, "Failed to delete business"), { title: "Business Delete Failed" });
@@ -1039,6 +1045,7 @@ export default function BusinessesPage() {
           </div>
         </form>
       </Modal>
+      <DeleteWarningModal isOpen={Boolean(businessToDelete)} itemName={businessToDelete?.name} entityLabel="business" pending={deleteBusinessMutation.isPending} onClose={() => setBusinessToDelete(null)} onConfirm={confirmDeleteBusiness} />
 
       {/* Floating Toast Notice */}
       {toastMessage && (

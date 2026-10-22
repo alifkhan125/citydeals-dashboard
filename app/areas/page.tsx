@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import DeleteWarningModal from "@/components/DeleteWarningModal";
 import { toast } from "@/components/Toast";
 import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
 import { type AreaItem, type AreaPayload } from "@/api/areas";
@@ -20,6 +21,7 @@ export default function AreasPage() {
   const [openActionSlug, setOpenActionSlug] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [areaToDelete, setAreaToDelete] = useState<AreaItem | null>(null);
 
   // Form states (clean and simple: name, slug, city, state)
   const [areaName, setAreaName] = useState("");
@@ -246,12 +248,18 @@ export default function AreasPage() {
     }
   };
 
-  const handleDeleteArea = async (area: AreaItem) => {
+  const handleDeleteArea = (area: AreaItem) => {
     setOpenActionSlug(null);
-    if (!confirm(`Are you sure you want to delete ${area.name}?`)) return;
+    setAreaToDelete(area);
+  };
+
+  const confirmDeleteArea = async () => {
+    if (!areaToDelete) return;
+    const area = areaToDelete;
     try {
       await deleteAreaMutation.mutateAsync(area.id);
       toast.success(`Deleted ${area.name} area`, { title: "Area Deleted" });
+      setAreaToDelete(null);
     } catch (err: unknown) {
       console.error("Failed to delete area:", err);
       toast.error(getErrorMessage(err, "Failed to delete area"), { title: "Area Delete Failed" });
@@ -610,6 +618,7 @@ export default function AreasPage() {
           </div>
         </form>
       </Modal>
+      <DeleteWarningModal isOpen={Boolean(areaToDelete)} itemName={areaToDelete?.name} entityLabel="area" pending={deleteAreaMutation.isPending} onClose={() => setAreaToDelete(null)} onConfirm={confirmDeleteArea} />
 
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl">

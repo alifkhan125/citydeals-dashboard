@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import DeleteWarningModal from "@/components/DeleteWarningModal";
 import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
 import { type Category, type CategoryPayload } from "@/api/categories";
@@ -33,6 +34,7 @@ export default function CategoriesPage() {
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
 
   // Form states
   const [iconFile, setIconFile] = useState<File | null>(null);
@@ -159,12 +161,18 @@ export default function CategoriesPage() {
     }
   }
 
-  async function handleDeleteCategory(category: Category) {
+  function handleDeleteCategory(category: Category) {
     setOpenActionId(null);
-    if (!confirm(`Are you sure you want to delete ${category.name}?`)) return;
+    setCategoryToDelete(category);
+  }
+
+  async function confirmDeleteCategory() {
+    if (!categoryToDelete) return;
+    const category = categoryToDelete;
     try {
       await deleteCategoryMutation.mutateAsync(category.id);
       toast.success(`Deleted ${category.name}`, { title: "Category Deleted" });
+      setCategoryToDelete(null);
     } catch (error) {
       console.error("Failed to delete category:", error);
       toast.error(getErrorMessage(error, "Failed to delete category"), {
@@ -700,6 +708,7 @@ export default function CategoriesPage() {
           </div>
         </form>
       </Modal>
+      <DeleteWarningModal isOpen={Boolean(categoryToDelete)} itemName={categoryToDelete?.name} entityLabel="category" pending={deleteCategoryMutation.isPending} onClose={() => setCategoryToDelete(null)} onConfirm={confirmDeleteCategory} />
 
       {/* Floating Toast Notice */}
       {toastMessage && (
