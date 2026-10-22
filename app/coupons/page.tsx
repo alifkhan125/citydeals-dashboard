@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import DeleteWarningModal from "@/components/DeleteWarningModal";
 import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
 import { type CouponItem, type CouponPayload } from "@/api/coupons";
@@ -1013,38 +1014,14 @@ export default function CouponsPage() {
         </div>
       )}
 
-      {/* Confirmation Modal for Notify Nearby */}
-      <Modal
-        isOpen={!!couponToDelete}
-        onClose={() => !deleteCouponMutation.isPending && setCouponToDelete(null)}
-        title="Delete coupon?"
-        maxWidth="max-w-[420px]"
-      >
-        <div className="flex flex-col gap-4">
-          <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800">
-            This will archive <strong>{couponToDelete?.title}</strong>. The coupon and all related redemption, saved, share, and view history will remain in the database.
-          </div>
-          <p className="text-sm leading-6 text-slate-600">
-            This is a soft delete, not a permanent deletion. Continue archiving this coupon?
-          </p>
-          <div className="mt-2 flex justify-end gap-3">
-            <button
-              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100"
-              onClick={() => setCouponToDelete(null)}
-              disabled={deleteCouponMutation.isPending}
-            >
-              Cancel
-            </button>
-            <button
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-              onClick={confirmDeleteCoupon}
-              disabled={deleteCouponMutation.isPending}
-            >
-              {deleteCouponMutation.isPending ? "Archiving..." : "Archive coupon"}
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <DeleteWarningModal
+        isOpen={Boolean(couponToDelete)}
+        itemName={couponToDelete?.title}
+        entityLabel="coupon"
+        pending={deleteCouponMutation.isPending}
+        onClose={() => setCouponToDelete(null)}
+        onConfirm={confirmDeleteCoupon}
+      />
 
       {/* Confirmation Modal for Notify Nearby */}
       <Modal
