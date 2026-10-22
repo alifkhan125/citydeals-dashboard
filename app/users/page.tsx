@@ -11,6 +11,16 @@ function getUserInitial(user?: Pick<AppUser, "name" | "email"> | null) {
   return (user?.name?.trim()?.[0] || user?.email?.trim()?.[0] || "U").toUpperCase();
 }
 
+function getUserActionClass(status: AppUser["status"]) {
+  if (status === "Active") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-700 hover:border-emerald-500 hover:bg-emerald-100";
+  }
+  if (status === "Suspended") {
+    return "border-amber-300 bg-amber-50 text-amber-700 hover:border-amber-500 hover:bg-amber-100";
+  }
+  return "border-rose-300 bg-rose-50 text-rose-700 hover:border-rose-500 hover:bg-rose-100";
+}
+
 function UserLocation({ user }: { user: AppUser }) {
   return (
     <div className="min-w-0">
@@ -117,7 +127,7 @@ export default function UsersPage() {
                     type="button"
                     aria-label="User actions"
                     onClick={(event) => toggleActionMenu(event, user.id)}
-                    className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm hover:border-[#0c4a6e] hover:bg-sky-50"
+                    className={`grid size-9 place-items-center rounded-lg border text-lg font-bold leading-none shadow-sm ${getUserActionClass(user.status)}`}
                   >
                     ⋮
                   </button>
