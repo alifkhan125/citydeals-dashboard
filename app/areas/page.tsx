@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import { toast } from "@/components/Toast";
 import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
 import { type AreaItem, type AreaPayload } from "@/api/areas";
 import { geocodingApi } from "@/api/geocoding";
@@ -17,6 +18,7 @@ export default function AreasPage() {
   const [isAddAreaOpen, setIsAddAreaOpen] = useState(false);
   const [editingArea, setEditingArea] = useState<AreaItem | null>(null);
   const [openActionSlug, setOpenActionSlug] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Form states (clean and simple: name, slug, city, state)
@@ -117,6 +119,23 @@ export default function AreasPage() {
     return fallback;
   }
 
+  function toggleActionMenu(event: React.MouseEvent<HTMLButtonElement>, slug: string) {
+    if (openActionSlug === slug) {
+      setOpenActionSlug(null);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuHeight = 150;
+    const menuWidth = 176;
+    const openBelow = window.innerHeight - rect.bottom >= menuHeight || rect.top < menuHeight;
+    const top = openBelow ? rect.bottom + 8 : rect.top - menuHeight - 8;
+    const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+
+    setActionMenuPosition({ top, left });
+    setOpenActionSlug(slug);
+  }
+
   const handleAreaNameChange = (value: string) => {
     setAreaName(value);
     setGeneratedSlug(value);
@@ -214,29 +233,29 @@ export default function AreasPage() {
     try {
       if (editingArea) {
         await updateAreaMutation.mutateAsync({ id: editingArea.id, payload });
-        showToast(`Updated ${areaName.trim()} area`);
+        toast.success(`Updated ${areaName.trim()} area`, { title: "Area Updated" });
       } else {
         await createAreaMutation.mutateAsync(payload);
-        showToast(`Added ${areaName.trim()} area`);
+        toast.success(`Added ${areaName.trim()} area`, { title: "Area Created" });
       }
 
       handleCloseAreaModal();
     } catch (err: unknown) {
       console.error("Failed to save area:", err);
-      showToast(getErrorMessage(err, "Failed to save area"));
+      toast.error(getErrorMessage(err, "Failed to save area"), { title: "Area Save Failed" });
     }
   };
 
   const handleDeleteArea = async (area: AreaItem) => {
     setOpenActionSlug(null);
     if (!confirm(`Are you sure you want to delete ${area.name}?`)) return;
-    deleteAreaMutation.mutate(area.id, {
-      onSuccess: () => showToast(`Deleted ${area.name} area`),
-      onError: (err) => {
-        console.error("Failed to delete area:", err);
-        showToast(getErrorMessage(err, "Failed to delete area"));
-      },
-    });
+    try {
+      await deleteAreaMutation.mutateAsync(area.id);
+      toast.success(`Deleted ${area.name} area`, { title: "Area Deleted" });
+    } catch (err: unknown) {
+      console.error("Failed to delete area:", err);
+      toast.error(getErrorMessage(err, "Failed to delete area"), { title: "Area Delete Failed" });
+    }
   };
 
   const totalMerchants = areaList.reduce((sum, a) => sum + (a._count?.merchants || 0), 0);
@@ -307,16 +326,12 @@ export default function AreasPage() {
                         aria-label={`Open actions for ${area.name}`}
                         className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                         type="button"
-                        onClick={() =>
-                          setOpenActionSlug((currentSlug) =>
-                            currentSlug === area.slug ? null : area.slug
-                          )
-                        }
+                        onClick={(event) => toggleActionMenu(event, area.slug)}
                       >
                         ⋮
                       </button>
                       {openActionSlug === area.slug && (
-                        <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -390,16 +405,12 @@ export default function AreasPage() {
                       aria-label={`Open actions for ${area.name}`}
                       className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                       type="button"
-                      onClick={() =>
-                        setOpenActionSlug((currentSlug) =>
-                          currentSlug === area.slug ? null : area.slug
-                        )
-                      }
+                        onClick={(event) => toggleActionMenu(event, area.slug)}
                     >
                       ⋮
                     </button>
                     {openActionSlug === area.slug && (
-                      <div className="absolute right-4 top-12 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                    <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
                         <button
                           className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                           type="button"

@@ -11,7 +11,7 @@ export interface CouponItem {
   redemptionFrequency?: string;
   discussion?: string | null;
   terms?: string | null;
-  status: "ACTIVE" | "DRAFT" | "PAUSED" | "EXPIRED";
+  status: "ACTIVE" | "ARCHIVED" | "PAUSED" | "EXPIRED";
   startsAt?: string | null;
   expiresAt?: string | null;
   areaId?: string;
@@ -57,7 +57,7 @@ export interface CouponPayload {
   discussion?: string;
   terms?: string;
   expiresAt?: string;
-  status: "ACTIVE" | "DRAFT" | "PAUSED" | "EXPIRED";
+  status: "ACTIVE" | "ARCHIVED" | "PAUSED" | "EXPIRED";
 }
 
 interface OptionRecord {

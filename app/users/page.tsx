@@ -26,31 +26,44 @@ function UserLocation({ user }: { user: AppUser }) {
 
 export default function UsersPage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const { data: users = [] } = useUsers();
 
+  const toggleActionMenu = (event: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    if (activeMenuId === id) return setActiveMenuId(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuHeight = 170;
+    const menuWidth = 176;
+    const openBelow = window.innerHeight - rect.bottom >= menuHeight || rect.top < menuHeight;
+    setActionMenuPosition({
+      top: openBelow ? rect.bottom + 8 : rect.top - menuHeight - 8,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+    });
+    setActiveMenuId(id);
+  };
+
   const updateStatusMutation = useUpdateUserStatus();
-  const updateStatus = (id: string, status: AppUser["status"]) => {
+  const updateStatus = async (id: string, status: AppUser["status"]) => {
+    if (updateStatusMutation.isPending) return;
     setActiveMenuId(null);
     if (selectedUser && selectedUser.id === id) {
       setSelectedUser((prev) => (prev ? { ...prev, status } : null));
     }
 
-    updateStatusMutation.mutate(
-      { id, status },
-      {
-        onError: (err) => {
-          const errMsg =
-            err instanceof AxiosError && typeof err.response?.data?.message === "string"
-              ? err.response.data.message
-              : "Failed to update status";
-          toast.error(errMsg, { title: "Update Failed" });
-          console.error("Failed to update status:", err);
-        },
-      },
-    );
+    try {
+      await updateStatusMutation.mutateAsync({ id, status });
+      toast.success(`User status changed to ${status}.`, { title: "User Updated" });
+    } catch (err) {
+      const errMsg =
+        err instanceof AxiosError && typeof err.response?.data?.message === "string"
+          ? err.response.data.message
+          : "Failed to update status";
+      toast.error(errMsg, { title: "Update Failed" });
+      console.error("Failed to update status:", err);
+    }
   };
 
   const handleToggleStatus = (id: string, newStatus: AppUser["status"]) => {
@@ -103,16 +116,14 @@ export default function UsersPage() {
                   <button
                     type="button"
                     aria-label="User actions"
-                    onClick={() =>
-                      setActiveMenuId(activeMenuId === user.id ? null : user.id)
-                    }
+                    onClick={(event) => toggleActionMenu(event, user.id)}
                     className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm hover:border-[#0c4a6e] hover:bg-sky-50"
                   >
                     ⋮
                   </button>
 
                   {activeMenuId === user.id && (
-                    <div className="absolute right-0 top-10 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                    <div className="fixed z-50 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl" style={actionMenuPosition}>
                       <button
                         type="button"
                         onClick={() => handleOpenDetails(user)}
@@ -289,9 +300,7 @@ export default function UsersPage() {
                   <button
                     type="button"
                     aria-label="User actions"
-                    onClick={() =>
-                      setActiveMenuId(activeMenuId === user.id ? null : user.id)
-                    }
+                    onClick={(event) => toggleActionMenu(event, user.id)}
                     className="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                   >
                     <svg
@@ -308,7 +317,7 @@ export default function UsersPage() {
 
                   {/* Dropdown Menu */}
                   {activeMenuId === user.id && (
-                    <div className="absolute right-6 top-8 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-100">
+                    <div className="fixed z-50 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-100" style={actionMenuPosition}>
                       <button
                         type="button"
                         onClick={() => handleOpenDetails(user)}

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import { toast } from "@/components/Toast";
 import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
 import { geocodingApi } from "@/api/geocoding";
 import { uploadImage } from "@/api/upload";
@@ -43,6 +44,7 @@ export default function BusinessesPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingBusiness, setEditingBusiness] = useState<BusinessItem | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Logo file / preview
@@ -126,6 +128,19 @@ export default function BusinessesPage() {
     }
     if (error instanceof Error) return error.message;
     return fallback;
+  }
+
+  function toggleActionMenu(event: React.MouseEvent<HTMLButtonElement>, id: string) {
+    if (openActionId === id) return setOpenActionId(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuHeight = 190;
+    const menuWidth = 176;
+    const openBelow = window.innerHeight - rect.bottom >= menuHeight || rect.top < menuHeight;
+    setActionMenuPosition({
+      top: openBelow ? rect.bottom + 8 : rect.top - menuHeight - 8,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+    });
+    setOpenActionId(id);
   }
 
   function handleLogoChange(event: ChangeEvent<HTMLInputElement>) {
@@ -232,18 +247,16 @@ export default function BusinessesPage() {
   async function handleToggleStatus(business: BusinessItem) {
     setOpenActionId(null);
     const nextStatus = business.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    updateBusinessMutation.mutate(
-      { id: business.id, payload: { status: nextStatus } },
-      {
-        onSuccess: () => {
-          showToast(`${business.name} ${nextStatus === "ACTIVE" ? "published" : "unpublished"}`);
-        },
-        onError: (error) => {
-          console.error("Failed to toggle business status:", error);
-          showToast(getErrorMessage(error, "Failed to update status"));
-        },
-      },
-    );
+    try {
+      await updateBusinessMutation.mutateAsync({ id: business.id, payload: { status: nextStatus } });
+      toast.success(
+        `${business.name} ${nextStatus === "ACTIVE" ? "published" : "unpublished"}.`,
+        { title: nextStatus === "ACTIVE" ? "Business Published" : "Business Unpublished" },
+      );
+    } catch (error) {
+      console.error("Failed to toggle business status:", error);
+      toast.error(getErrorMessage(error, "Failed to update status"), { title: "Status Update Failed" });
+    }
   }
 
   async function handleDeleteBusiness(business: BusinessItem) {
@@ -252,15 +265,13 @@ export default function BusinessesPage() {
       return;
     }
 
-    deleteBusinessMutation.mutate(business.id, {
-      onSuccess: () => {
-        showToast(`Deleted ${business.name}`);
-      },
-      onError: (error) => {
-        console.error("Failed to delete business:", error);
-        showToast(getErrorMessage(error, "Failed to delete business"));
-      },
-    });
+    try {
+      await deleteBusinessMutation.mutateAsync(business.id);
+      toast.success(`Deleted ${business.name}`, { title: "Business Deleted" });
+    } catch (error) {
+      console.error("Failed to delete business:", error);
+      toast.error(getErrorMessage(error, "Failed to delete business"), { title: "Business Delete Failed" });
+    }
   }
 
   async function handleSaveBusiness(event: React.FormEvent<HTMLFormElement>) {
@@ -318,16 +329,16 @@ export default function BusinessesPage() {
 
       if (editingBusiness) {
         await updateBusinessMutation.mutateAsync({ id: editingBusiness.id, payload });
-        showToast(`Updated ${name.trim()}`);
+        toast.success(`Updated ${name.trim()}`, { title: "Business Updated" });
       } else {
         await createBusinessMutation.mutateAsync(payload);
-        showToast(`Created ${name.trim()}`);
+        toast.success(`Created ${name.trim()}`, { title: "Business Created" });
       }
 
       handleCloseDrawer();
     } catch (err: unknown) {
       console.error("Failed to save business:", err);
-      showToast(getErrorMessage(err, "Failed to save business"));
+      toast.error(getErrorMessage(err, "Failed to save business"), { title: "Business Save Failed" });
     }
   }
 
@@ -480,16 +491,12 @@ export default function BusinessesPage() {
                         aria-label={`Open actions for ${location.name}`}
                         className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                         type="button"
-                        onClick={() =>
-                          setOpenActionId((currentId) =>
-                            currentId === location.id ? null : location.id
-                          )
-                        }
+                        onClick={(event) => toggleActionMenu(event, location.id)}
                       >
                         ⋮
                       </button>
                       {openActionId === location.id && (
-                        <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100">
+                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100" style={actionMenuPosition}>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -657,16 +664,12 @@ export default function BusinessesPage() {
                       aria-label={`Open actions for ${location.name}`}
                       className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                       type="button"
-                      onClick={() =>
-                        setOpenActionId((currentId) =>
-                          currentId === location.id ? null : location.id
-                        )
-                      }
+                      onClick={(event) => toggleActionMenu(event, location.id)}
                     >
                       ⋮
                     </button>
                     {openActionId === location.id && (
-                      <div className="absolute right-3 top-10 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100">
+                      <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100" style={actionMenuPosition}>
                         <button
                           className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                           type="button"
