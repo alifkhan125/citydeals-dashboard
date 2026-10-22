@@ -3,6 +3,15 @@ import { toast } from '@/components/Toast';
 
 const baseURL = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:5000/api";
 
+function getApiErrorMessage(error: any) {
+  const message = error?.response?.data?.message;
+  if (Array.isArray(message)) return message.join(" ");
+  if (typeof message === "string" && message.trim()) return message;
+  if (typeof error?.response?.data?.error === "string") return error.response.data.error;
+  if (error?.response?.status) return `Request failed (${error.response.status}). Please try again.`;
+  return "Network error. Check your connection and try again.";
+}
+
 export const apiClient = axios.create({
   baseURL,
   headers: {
@@ -93,6 +102,13 @@ apiClient.interceptors.response.use(
       } finally {
         isRefreshing = false;
       }
+    }
+
+    // GET requests often fail outside a page mutation handler. Show the
+    // backend's exact message instead of leaving the user with console-only
+    // feedback. Mutation pages already show their own contextual toast.
+    if (typeof window !== 'undefined' && originalRequest?.method?.toLowerCase() === 'get') {
+      toast.error(getApiErrorMessage(error), { title: 'Request Failed' });
     }
     
     return Promise.reject(error);
