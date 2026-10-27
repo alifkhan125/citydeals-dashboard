@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useEffect, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import DeleteWarningModal from "@/components/DeleteWarningModal";
+import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
 import { type CouponItem, type CouponPayload } from "@/api/coupons";
 import {
@@ -33,11 +35,15 @@ export default function CouponsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [editingCoupon, setEditingCoupon] = useState<CouponItem | null>(null);
+  const [couponToDelete, setCouponToDelete] = useState<CouponItem | null>(null);
   const [couponToNotify, setCouponToNotify] = useState<CouponItem | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [merchantFilter, setMerchantFilter] = useState("All merchants");
   const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Form states
   const [offer, setOffer] = useState("");
@@ -81,6 +87,23 @@ export default function CouponsPage() {
     }
     if (error instanceof Error) return error.message;
     return fallback;
+  }
+
+  function toggleActionMenu(event: React.MouseEvent<HTMLButtonElement>, id: string) {
+    if (openActionId === id) {
+      setOpenActionId(null);
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuHeight = 210;
+    const menuWidth = 176;
+    const openBelow = window.innerHeight - rect.bottom >= menuHeight || rect.top < menuHeight;
+    const top = openBelow ? rect.bottom + 8 : rect.top - menuHeight - 8;
+    const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
+
+    setActionMenuPosition({ top, left });
+    setOpenActionId(id);
   }
 
   function handleOpenNewCoupon() {
@@ -133,33 +156,41 @@ export default function CouponsPage() {
 
   async function handleToggleStatus(coupon: CouponItem) {
     setOpenActionId(null);
-    const newStatus = coupon.status === "ACTIVE" ? "DRAFT" : "ACTIVE";
-    updateCouponMutation.mutate(
-      { id: coupon.id, payload: { status: newStatus } },
-      {
-        onSuccess: () => {
-          showToast(`${coupon.title} ${newStatus === "ACTIVE" ? "published" : "unpublished"}`);
-        },
-        onError: (error) => {
-          console.error("Failed to toggle status:", error);
-          showToast(getErrorMessage(error, "Failed to update coupon status"));
-        },
-      },
-    );
+    if (updateCouponMutation.isPending || deleteCouponMutation.isPending) return;
+    const newStatus = coupon.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE";
+    try {
+      await updateCouponMutation.mutateAsync({ id: coupon.id, payload: { status: newStatus } });
+      toast.success(
+        `${coupon.title} ${newStatus === "ACTIVE" ? "published" : "archived"}.`,
+        { title: newStatus === "ACTIVE" ? "Coupon Published" : "Coupon Archived" },
+      );
+    } catch (error) {
+      console.error("Failed to toggle status:", error);
+      toast.error(getErrorMessage(error, "Failed to update coupon status"), {
+        title: "Status Update Failed",
+      });
+    }
   }
 
-  async function handleDeleteCoupon(coupon: CouponItem) {
+  function handleDeleteCoupon(coupon: CouponItem) {
     setOpenActionId(null);
-    if (!confirm(`Are you sure you want to delete ${coupon.title}?`)) return;
-    deleteCouponMutation.mutate(coupon.id, {
-      onSuccess: () => {
-        showToast(`Deleted ${coupon.title}`);
-      },
-      onError: (error) => {
+    setCouponToDelete(coupon);
+  }
+
+  function confirmDeleteCoupon() {
+    if (!couponToDelete) return;
+    if (deleteCouponMutation.isPending || saving) return;
+    const coupon = couponToDelete;
+    deleteCouponMutation.mutateAsync(coupon.id)
+      .then(() => {
+        toast.success(`Deleted ${coupon.title}`, { title: "Coupon Deleted" });
+        setCouponToDelete(null);
+      })
+      .catch((error) => {
         console.error("Failed to delete coupon:", error);
-        showToast(getErrorMessage(error, "Failed to delete coupon"));
-      },
-    });
+        toast.error(getErrorMessage(error, "Failed to delete coupon"), { title: "Coupon Delete Failed" });
+        setCouponToDelete(null);
+      });
   }
 
   function handleNotifyNearby(coupon: CouponItem) {
@@ -198,7 +229,7 @@ export default function CouponsPage() {
   function getStatusLabel(status: string) {
     if (status === "ACTIVE") return "Published";
     if (status === "EXPIRED") return "Expired";
-    return "Draft";
+    return "Archived";
   }
 
   function getExportRows() {
@@ -320,6 +351,7 @@ export default function CouponsPage() {
 
   const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving || deleteCouponMutation.isPending) return;
     if (!offer.trim()) {
       showToast("Offer Title is required");
       return;
@@ -361,21 +393,22 @@ export default function CouponsPage() {
         discussion: discussion.trim() || undefined,
         terms: terms.trim() || undefined,
         expiresAt: expires ? new Date(`${expires}T23:59:59.000Z`).toISOString() : undefined,
-        status: "ACTIVE",
+        // Keep archived coupons out of the app until an admin explicitly publishes them.
+        status: editingCoupon?.status || "ARCHIVED",
       };
 
       if (editingCoupon) {
         await updateCouponMutation.mutateAsync({ id: editingCoupon.id, payload });
-        showToast("Coupon changes saved");
+        toast.success("Coupon changes saved", { title: "Coupon Updated" });
       } else {
         await createCouponMutation.mutateAsync(payload);
-        showToast("Coupon created successfully");
+        toast.success("Coupon created successfully", { title: "Coupon Created" });
       }
 
       handleCloseModal();
     } catch (err: unknown) {
       console.error("Failed to save coupon:", err);
-      showToast(getErrorMessage(err, "Failed to save coupon"));
+      toast.error(getErrorMessage(err, "Failed to save coupon"), { title: "Coupon Save Failed" });
     }
   };
 
@@ -395,6 +428,14 @@ export default function CouponsPage() {
 
     return merchantMatches && statusMatches;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredCoupons.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedCoupons = filteredCoupons.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [merchantFilter, statusFilter, pageSize]);
 
   const totalViews = filteredCoupons.reduce((sum, coupon) => sum + (coupon.views || 0), 0);
   const totalLikes = filteredCoupons.reduce((sum, coupon) => sum + (coupon.likes || 0), 0);
@@ -481,7 +522,7 @@ export default function CouponsPage() {
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
               >
-                {["All statuses", "Published", "Draft", "Expired"].map((option) => (
+                {["All statuses", "Published", "Archived", "Expired"].map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
@@ -521,7 +562,7 @@ export default function CouponsPage() {
         ) : (
           <>
             <div className="coupons-mobile-list mt-4 gap-3">
-              {filteredCoupons.map((coupon) => (
+              {paginatedCoupons.map((coupon) => (
                 <article
                   className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
                   key={coupon.id}
@@ -553,16 +594,12 @@ export default function CouponsPage() {
                         aria-expanded={openActionId === coupon.id}
                         aria-label={`Open actions for ${coupon.title}`}
                         className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
-                        onClick={() =>
-                          setOpenActionId((currentId) =>
-                            currentId === coupon.id ? null : coupon.id
-                          )
-                        }
+                        onClick={(event) => toggleActionMenu(event, coupon.id)}
                       >
                         ⋮
                       </button>
                       {openActionId === coupon.id && (
-                        <div className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -575,7 +612,7 @@ export default function CouponsPage() {
                             type="button"
                             onClick={() => handleToggleStatus(coupon)}
                           >
-                            {coupon.status === "ACTIVE" ? "Unpublish" : "Publish"}
+                            {coupon.status === "ACTIVE" ? "Archive" : "Publish"}
                           </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-blue-600 hover:bg-blue-50"
@@ -663,7 +700,7 @@ export default function CouponsPage() {
                 </div>
 
                 {/* Table Body */}
-                {filteredCoupons.map((coupon) => (
+                {paginatedCoupons.map((coupon) => (
                   <div
                     className="grid h-[60px] grid-cols-[minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
                     key={coupon.id}
@@ -733,16 +770,12 @@ export default function CouponsPage() {
                         aria-expanded={openActionId === coupon.id}
                         aria-label={`Open actions for ${coupon.title}`}
                         className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
-                        onClick={() =>
-                          setOpenActionId((currentId) =>
-                            currentId === coupon.id ? null : coupon.id
-                          )
-                        }
+                        onClick={(event) => toggleActionMenu(event, coupon.id)}
                       >
                         ⋮
                       </button>
                       {openActionId === coupon.id && (
-                        <div className="absolute right-4 top-10 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl">
+                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -755,7 +788,7 @@ export default function CouponsPage() {
                             type="button"
                             onClick={() => handleToggleStatus(coupon)}
                           >
-                            {coupon.status === "ACTIVE" ? "Unpublish" : "Publish"}
+                            {coupon.status === "ACTIVE" ? "Archive" : "Publish"}
                           </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-blue-600 hover:bg-blue-50"
@@ -776,6 +809,27 @@ export default function CouponsPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Showing {filteredCoupons.length === 0 ? 0 : (safePage - 1) * pageSize + 1}
+                -{Math.min(safePage * pageSize, filteredCoupons.length)} of {filteredCoupons.length} coupons
+              </span>
+              <div className="flex items-center gap-2">
+                <label htmlFor="coupon-page-size" className="whitespace-nowrap">Rows per page</label>
+                <select
+                  id="coupon-page-size"
+                  value={pageSize}
+                  onChange={(event) => setPageSize(Number(event.target.value))}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  {[5, 10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <button type="button" disabled={safePage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                <span className="min-w-16 text-center">{safePage} / {totalPages}</span>
+                <button type="button" disabled={safePage >= totalPages} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
               </div>
             </div>
           </>
@@ -990,6 +1044,15 @@ export default function CouponsPage() {
           {toastMessage}
         </div>
       )}
+
+      <DeleteWarningModal
+        isOpen={Boolean(couponToDelete)}
+        itemName={couponToDelete?.title}
+        entityLabel="coupon"
+        pending={deleteCouponMutation.isPending}
+        onClose={() => setCouponToDelete(null)}
+        onConfirm={confirmDeleteCoupon}
+      />
 
       {/* Confirmation Modal for Notify Nearby */}
       <Modal

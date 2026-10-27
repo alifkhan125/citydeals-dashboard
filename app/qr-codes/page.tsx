@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { type AreaItem } from "@/api/areas";
 import { useAreas, useRegenerateAllAreaQr, useRegenerateAreaQr } from "@/hooks/useAreas";
+import Modal from "@/components/Modal";
 
 export default function QrCodesPage() {
   const { data: areas = [], isLoading: loading, refetch } = useAreas();
@@ -12,6 +13,7 @@ export default function QrCodesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedSlug, setCopiedSlug] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showRegenerateAllModal, setShowRegenerateAllModal] = useState(false);
 
   function showToast(text: string) {
     setToastMessage(text);
@@ -171,8 +173,12 @@ export default function QrCodesPage() {
     }
   }
 
-  async function handleRegenerateAll() {
-    if (!confirm("Are you sure you want to regenerate QR codes for all areas?")) return;
+  function handleRegenerateAll() {
+    setShowRegenerateAllModal(true);
+  }
+
+  async function confirmRegenerateAll() {
+    setShowRegenerateAllModal(false);
     try {
       showToast("Regenerating all area QR codes on server...");
       const res = await regenerateAllQrMutation.mutateAsync();
@@ -418,6 +424,18 @@ export default function QrCodesPage() {
           {toastMessage}
         </div>
       )}
+
+      <Modal isOpen={showRegenerateAllModal} onClose={() => !regenerateAllQrMutation.isPending && setShowRegenerateAllModal(false)} title="Regenerate all QR codes?" maxWidth="max-w-[420px]">
+        <div className="flex flex-col gap-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+            <strong>Warning:</strong> This updates QR links for every active area. No database data will be permanently deleted.
+          </div>
+          <div className="flex justify-end gap-3">
+            <button className="rounded-lg px-4 py-2 text-sm text-slate-700 hover:bg-slate-100" onClick={() => setShowRegenerateAllModal(false)} disabled={regenerateAllQrMutation.isPending}>Cancel</button>
+            <button className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50" onClick={confirmRegenerateAll} disabled={regenerateAllQrMutation.isPending}>{regenerateAllQrMutation.isPending ? "Updating..." : "Regenerate QR codes"}</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

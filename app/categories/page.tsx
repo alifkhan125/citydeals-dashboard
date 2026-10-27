@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
+import DeleteWarningModal from "@/components/DeleteWarningModal";
+import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
 import { type Category, type CategoryPayload } from "@/api/categories";
 import {
@@ -30,7 +32,9 @@ export default function CategoriesPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
 
   // Form states
   const [iconFile, setIconFile] = useState<File | null>(null);
@@ -91,6 +95,19 @@ export default function CategoriesPage() {
     return fallback;
   }
 
+  function toggleActionMenu(event: React.MouseEvent<HTMLButtonElement>, id: string) {
+    if (openActionId === id) return setOpenActionId(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuHeight = 150;
+    const menuWidth = 176;
+    const openBelow = window.innerHeight - rect.bottom >= menuHeight || rect.top < menuHeight;
+    setActionMenuPosition({
+      top: openBelow ? rect.bottom + 8 : rect.top - menuHeight - 8,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+    });
+    setOpenActionId(id);
+  }
+
   function handleOpenNewCategory() {
     setOpenActionId(null);
     setEditingCategory(null);
@@ -130,32 +147,38 @@ export default function CategoriesPage() {
   async function handleToggleStatus(category: Category) {
     setOpenActionId(null);
     const newStatus = category.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
-    updateCategoryMutation.mutate(
-      { id: category.id, payload: { status: newStatus } },
-      {
-        onSuccess: () => {
-          showToast(`${category.name} ${newStatus === "ACTIVE" ? "published" : "unpublished"}`);
-        },
-        onError: (error) => {
-          console.error("Failed to toggle status:", error);
-          showToast(getErrorMessage(error, "Failed to update category status"));
-        },
-      },
-    );
+    try {
+      await updateCategoryMutation.mutateAsync({ id: category.id, payload: { status: newStatus } });
+      toast.success(
+        `${category.name} ${newStatus === "ACTIVE" ? "published" : "unpublished"}.`,
+        { title: newStatus === "ACTIVE" ? "Category Published" : "Category Unpublished" },
+      );
+    } catch (error) {
+      console.error("Failed to toggle status:", error);
+      toast.error(getErrorMessage(error, "Failed to update category status"), {
+        title: "Status Update Failed",
+      });
+    }
   }
 
-  async function handleDeleteCategory(category: Category) {
+  function handleDeleteCategory(category: Category) {
     setOpenActionId(null);
-    if (!confirm(`Are you sure you want to delete ${category.name}?`)) return;
-    deleteCategoryMutation.mutate(category.id, {
-      onSuccess: () => {
-        showToast(`Deleted ${category.name}`);
-      },
-      onError: (error) => {
-        console.error("Failed to delete category:", error);
-        showToast(getErrorMessage(error, "Failed to delete category"));
-      },
-    });
+    setCategoryToDelete(category);
+  }
+
+  async function confirmDeleteCategory() {
+    if (!categoryToDelete) return;
+    const category = categoryToDelete;
+    try {
+      await deleteCategoryMutation.mutateAsync(category.id);
+      toast.success(`Deleted ${category.name}`, { title: "Category Deleted" });
+      setCategoryToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete category:", error);
+      toast.error(getErrorMessage(error, "Failed to delete category"), {
+        title: "Category Delete Failed",
+      });
+    }
   }
 
   async function handleSaveCategory(event: React.FormEvent) {
@@ -197,16 +220,16 @@ export default function CategoriesPage() {
 
       if (editingCategory) {
         await updateCategoryMutation.mutateAsync({ id: editingCategory.id, payload });
-        showToast(`Updated ${name.trim()}`);
+        toast.success(`Updated ${name.trim()}`, { title: "Category Updated" });
       } else {
         await createCategoryMutation.mutateAsync(payload);
-        showToast(`Created ${name.trim()}`);
+        toast.success(`Created ${name.trim()}`, { title: "Category Created" });
       }
 
       handleCloseDrawer();
     } catch (err: unknown) {
       console.error("Failed to save category:", err);
-      showToast(getErrorMessage(err, "Failed to save category"));
+      toast.error(getErrorMessage(err, "Failed to save category"), { title: "Category Save Failed" });
     }
   }
 
@@ -272,8 +295,8 @@ export default function CategoriesPage() {
               className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Draft / Inactive</option>
+              <option value="ACTIVE">Published</option>
+              <option value="INACTIVE">Archived</option>
             </select>
           </div>
         </div>
@@ -338,16 +361,12 @@ export default function CategoriesPage() {
                         aria-label={`Open actions for ${category.name}`}
                         className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                         type="button"
-                        onClick={() =>
-                          setOpenActionId((currentId) =>
-                            currentId === category.id ? null : category.id
-                          )
-                        }
+                        onClick={(event) => toggleActionMenu(event, category.id)}
                       >
                         ⋮
                       </button>
                       {openActionId === category.id && (
-                        <div className="absolute right-0 top-11 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100">
+                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100" style={actionMenuPosition}>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -396,7 +415,7 @@ export default function CategoriesPage() {
                           : "inline-flex h-6 items-center rounded-full bg-slate-100 px-2.5 text-xs font-medium text-slate-600"
                       }
                     >
-                      {category.status === "ACTIVE" ? "Active" : "Draft"}
+                      {category.status === "ACTIVE" ? "Published" : "Archived"}
                     </span>
                   </div>
                 </article>
@@ -472,7 +491,7 @@ export default function CategoriesPage() {
                           : "inline-flex h-6 items-center rounded bg-slate-100 px-2 text-xs font-medium leading-5 text-slate-600"
                       }
                     >
-                      {category.status === "ACTIVE" ? "Active" : "Draft"}
+                      {category.status === "ACTIVE" ? "Published" : "Archived"}
                     </span>
                   </div>
 
@@ -483,16 +502,12 @@ export default function CategoriesPage() {
                       aria-label={`Open actions for ${category.name}`}
                       className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                       type="button"
-                      onClick={() =>
-                        setOpenActionId((currentId) =>
-                          currentId === category.id ? null : category.id
-                        )
-                      }
+                      onClick={(event) => toggleActionMenu(event, category.id)}
                     >
                       ⋮
                     </button>
                     {openActionId === category.id && (
-                      <div className="absolute right-3 top-10 z-20 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100">
+                      <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl animate-in fade-in zoom-in-95 duration-100" style={actionMenuPosition}>
                         <button
                           className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                           type="button"
@@ -656,8 +671,8 @@ export default function CategoriesPage() {
                     onChange={(e) => setStatus(e.target.value as "ACTIVE" | "INACTIVE")}
                     className="w-full min-w-0 flex-1 truncate bg-transparent outline-none cursor-pointer"
                   >
-                    <option value="ACTIVE">Active (Published)</option>
-                    <option value="INACTIVE">Draft (Hidden)</option>
+                    <option value="ACTIVE">Published</option>
+                    <option value="INACTIVE">Archived</option>
                   </select>
                 </span>
               </label>
@@ -693,6 +708,7 @@ export default function CategoriesPage() {
           </div>
         </form>
       </Modal>
+      <DeleteWarningModal isOpen={Boolean(categoryToDelete)} itemName={categoryToDelete?.name} entityLabel="category" pending={deleteCategoryMutation.isPending} onClose={() => setCategoryToDelete(null)} onConfirm={confirmDeleteCategory} />
 
       {/* Floating Toast Notice */}
       {toastMessage && (

@@ -11,6 +11,17 @@ function getUserInitial(user?: Pick<AppUser, "name" | "email"> | null) {
   return (user?.name?.trim()?.[0] || user?.email?.trim()?.[0] || "U").toUpperCase();
 }
 
+function getUserActionClass(status: AppUser["status"]) {
+  const normalized = status.toUpperCase();
+  if (normalized === "ACTIVE") {
+    return "border-emerald-300 bg-emerald-50 text-emerald-700 hover:border-emerald-500 hover:bg-emerald-100";
+  }
+  if (normalized === "SUSPENDED") {
+    return "border-amber-300 bg-amber-50 text-amber-700 hover:border-amber-500 hover:bg-amber-100";
+  }
+  return "border-rose-300 bg-rose-50 text-rose-700 hover:border-rose-500 hover:bg-rose-100";
+}
+
 function UserLocation({ user }: { user: AppUser }) {
   return (
     <div className="min-w-0">
@@ -26,31 +37,44 @@ function UserLocation({ user }: { user: AppUser }) {
 
 export default function UsersPage() {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   const { data: users = [] } = useUsers();
 
+  const toggleActionMenu = (event: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    if (activeMenuId === id) return setActiveMenuId(null);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const menuHeight = 170;
+    const menuWidth = 176;
+    const openBelow = window.innerHeight - rect.bottom >= menuHeight || rect.top < menuHeight;
+    setActionMenuPosition({
+      top: openBelow ? rect.bottom + 8 : rect.top - menuHeight - 8,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+    });
+    setActiveMenuId(id);
+  };
+
   const updateStatusMutation = useUpdateUserStatus();
-  const updateStatus = (id: string, status: AppUser["status"]) => {
+  const updateStatus = async (id: string, status: AppUser["status"]) => {
+    if (updateStatusMutation.isPending) return;
     setActiveMenuId(null);
     if (selectedUser && selectedUser.id === id) {
       setSelectedUser((prev) => (prev ? { ...prev, status } : null));
     }
 
-    updateStatusMutation.mutate(
-      { id, status },
-      {
-        onError: (err) => {
-          const errMsg =
-            err instanceof AxiosError && typeof err.response?.data?.message === "string"
-              ? err.response.data.message
-              : "Failed to update status";
-          toast.error(errMsg, { title: "Update Failed" });
-          console.error("Failed to update status:", err);
-        },
-      },
-    );
+    try {
+      await updateStatusMutation.mutateAsync({ id, status });
+      toast.success(`User status changed to ${status}.`, { title: "User Updated" });
+    } catch (err) {
+      const errMsg =
+        err instanceof AxiosError && typeof err.response?.data?.message === "string"
+          ? err.response.data.message
+          : "Failed to update status";
+      toast.error(errMsg, { title: "Update Failed" });
+      console.error("Failed to update status:", err);
+    }
   };
 
   const handleToggleStatus = (id: string, newStatus: AppUser["status"]) => {
@@ -103,16 +127,14 @@ export default function UsersPage() {
                   <button
                     type="button"
                     aria-label="User actions"
-                    onClick={() =>
-                      setActiveMenuId(activeMenuId === user.id ? null : user.id)
-                    }
-                    className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm hover:border-[#0c4a6e] hover:bg-sky-50"
+                    onClick={(event) => toggleActionMenu(event, user.id)}
+                    className={`grid size-9 place-items-center rounded-lg border text-lg font-bold leading-none shadow-sm ${getUserActionClass(user.status)}`}
                   >
                     ⋮
                   </button>
 
                   {activeMenuId === user.id && (
-                    <div className="absolute right-0 top-10 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                    <div className="fixed z-50 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl" style={actionMenuPosition}>
                       <button
                         type="button"
                         onClick={() => handleOpenDetails(user)}
@@ -121,7 +143,7 @@ export default function UsersPage() {
                         View Details
                       </button>
 
-                      {user.status === "Active" ? (
+                      {user.status.toUpperCase() === "ACTIVE" ? (
                         <button
                           type="button"
                           onClick={() => handleToggleStatus(user.id, "Suspended")}
@@ -190,9 +212,9 @@ export default function UsersPage() {
                   </span>
                   <span
                     className={`mt-1 inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                      user.status === "Active"
+                      user.status.toUpperCase() === "ACTIVE"
                         ? "bg-emerald-100 text-[#16a34a]"
-                        : user.status === "Suspended"
+                        : user.status.toUpperCase() === "SUSPENDED"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-rose-100 text-rose-700"
                     }`}
@@ -273,9 +295,9 @@ export default function UsersPage() {
                 <div className="px-4">
                   <span
                     className={`inline-flex items-center rounded px-2.5 py-0.5 text-xs font-medium leading-5 ${
-                      user.status === "Active"
+                      user.status.toUpperCase() === "ACTIVE"
                         ? "bg-emerald-100 text-[#16a34a]"
-                        : user.status === "Suspended"
+                        : user.status.toUpperCase() === "SUSPENDED"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-rose-100 text-rose-700"
                     }`}
@@ -289,9 +311,7 @@ export default function UsersPage() {
                   <button
                     type="button"
                     aria-label="User actions"
-                    onClick={() =>
-                      setActiveMenuId(activeMenuId === user.id ? null : user.id)
-                    }
+                    onClick={(event) => toggleActionMenu(event, user.id)}
                     className="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                   >
                     <svg
@@ -308,7 +328,7 @@ export default function UsersPage() {
 
                   {/* Dropdown Menu */}
                   {activeMenuId === user.id && (
-                    <div className="absolute right-6 top-8 z-30 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-100">
+                    <div className="fixed z-50 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-100" style={actionMenuPosition}>
                       <button
                         type="button"
                         onClick={() => handleOpenDetails(user)}
@@ -321,7 +341,7 @@ export default function UsersPage() {
                         View Details
                       </button>
 
-                      {user.status === "Active" ? (
+                      {user.status.toUpperCase() === "ACTIVE" ? (
                         <button
                           type="button"
                           onClick={() => handleToggleStatus(user.id, "Suspended")}
@@ -386,9 +406,9 @@ export default function UsersPage() {
                   </h3>
                   <span
                     className={`rounded px-2.5 py-0.5 text-xs font-medium ${
-                      selectedUser.status === "Active"
+                    selectedUser.status.toUpperCase() === "ACTIVE"
                         ? "bg-emerald-100 text-[#16a34a]"
-                        : selectedUser.status === "Suspended"
+                        : selectedUser.status.toUpperCase() === "SUSPENDED"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-rose-100 text-rose-700"
                     }`}
@@ -448,7 +468,7 @@ export default function UsersPage() {
 
             {/* Action Buttons in Modal */}
             <div className="flex gap-3 pt-2">
-              {selectedUser.status === "Active" ? (
+              {selectedUser.status.toUpperCase() === "ACTIVE" ? (
                 <button
                   type="button"
                   onClick={() => handleToggleStatus(selectedUser.id, "Suspended")}
