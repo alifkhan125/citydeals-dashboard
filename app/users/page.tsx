@@ -12,10 +12,11 @@ function getUserInitial(user?: Pick<AppUser, "name" | "email"> | null) {
 }
 
 function getUserActionClass(status: AppUser["status"]) {
-  if (status === "Active") {
+  const normalized = status.toUpperCase();
+  if (normalized === "ACTIVE") {
     return "border-emerald-300 bg-emerald-50 text-emerald-700 hover:border-emerald-500 hover:bg-emerald-100";
   }
-  if (status === "Suspended") {
+  if (normalized === "SUSPENDED") {
     return "border-amber-300 bg-amber-50 text-amber-700 hover:border-amber-500 hover:bg-amber-100";
   }
   return "border-rose-300 bg-rose-50 text-rose-700 hover:border-rose-500 hover:bg-rose-100";
@@ -142,7 +143,7 @@ export default function UsersPage() {
                         View Details
                       </button>
 
-                      {user.status === "Active" ? (
+                      {user.status.toUpperCase() === "ACTIVE" ? (
                         <button
                           type="button"
                           onClick={() => handleToggleStatus(user.id, "Suspended")}
@@ -211,9 +212,9 @@ export default function UsersPage() {
                   </span>
                   <span
                     className={`mt-1 inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${
-                      user.status === "Active"
+                      user.status.toUpperCase() === "ACTIVE"
                         ? "bg-emerald-100 text-[#16a34a]"
-                        : user.status === "Suspended"
+                        : user.status.toUpperCase() === "SUSPENDED"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-rose-100 text-rose-700"
                     }`}
@@ -294,9 +295,9 @@ export default function UsersPage() {
                 <div className="px-4">
                   <span
                     className={`inline-flex items-center rounded px-2.5 py-0.5 text-xs font-medium leading-5 ${
-                      user.status === "Active"
+                      user.status.toUpperCase() === "ACTIVE"
                         ? "bg-emerald-100 text-[#16a34a]"
-                        : user.status === "Suspended"
+                        : user.status.toUpperCase() === "SUSPENDED"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-rose-100 text-rose-700"
                     }`}
@@ -340,7 +341,7 @@ export default function UsersPage() {
                         View Details
                       </button>
 
-                      {user.status === "Active" ? (
+                      {user.status.toUpperCase() === "ACTIVE" ? (
                         <button
                           type="button"
                           onClick={() => handleToggleStatus(user.id, "Suspended")}
@@ -405,9 +406,9 @@ export default function UsersPage() {
                   </h3>
                   <span
                     className={`rounded px-2.5 py-0.5 text-xs font-medium ${
-                      selectedUser.status === "Active"
+                    selectedUser.status.toUpperCase() === "ACTIVE"
                         ? "bg-emerald-100 text-[#16a34a]"
-                        : selectedUser.status === "Suspended"
+                        : selectedUser.status.toUpperCase() === "SUSPENDED"
                           ? "bg-amber-100 text-amber-700"
                           : "bg-rose-100 text-rose-700"
                     }`}
@@ -467,7 +468,7 @@ export default function UsersPage() {
 
             {/* Action Buttons in Modal */}
             <div className="flex gap-3 pt-2">
-              {selectedUser.status === "Active" ? (
+              {selectedUser.status.toUpperCase() === "ACTIVE" ? (
                 <button
                   type="button"
                   onClick={() => handleToggleStatus(selectedUser.id, "Suspended")}

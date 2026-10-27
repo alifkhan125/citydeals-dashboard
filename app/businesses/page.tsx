@@ -430,8 +430,8 @@ export default function BusinessesPage() {
               className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
-              <option value="ACTIVE">Active</option>
-              <option value="INACTIVE">Draft / Inactive</option>
+              <option value="ACTIVE">Published</option>
+              <option value="INACTIVE">Archived</option>
             </select>
           </div>
         </div>
@@ -565,7 +565,7 @@ export default function BusinessesPage() {
                           : "w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600"
                       }
                     >
-                      {location.status === "ACTIVE" ? "Active" : "Draft"}
+                      {location.status === "ACTIVE" ? "Published" : "Archived"}
                     </span>
                   </div>
                 </article>
@@ -659,7 +659,7 @@ export default function BusinessesPage() {
                           : "inline-flex h-6 items-center rounded bg-slate-100 px-2 text-xs font-medium leading-5 text-slate-600"
                       }
                     >
-                      {location.status === "ACTIVE" ? "Active" : "Draft"}
+                      {location.status === "ACTIVE" ? "Published" : "Archived"}
                     </span>
                   </div>
 
@@ -955,8 +955,8 @@ export default function BusinessesPage() {
                     onChange={(e) => setStatus(e.target.value as "ACTIVE" | "INACTIVE")}
                     className="w-full min-w-0 flex-1 truncate bg-transparent outline-none cursor-pointer"
                   >
-                    <option value="ACTIVE">Active (Published)</option>
-                    <option value="INACTIVE">Draft (Hidden)</option>
+                    <option value="ACTIVE">Published</option>
+                    <option value="INACTIVE">Archived</option>
                   </select>
                 </span>
               </label>

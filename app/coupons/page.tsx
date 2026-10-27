@@ -42,6 +42,8 @@ export default function CouponsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [merchantFilter, setMerchantFilter] = useState("All merchants");
   const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Form states
   const [offer, setOffer] = useState("");
@@ -427,6 +429,14 @@ export default function CouponsPage() {
     return merchantMatches && statusMatches;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredCoupons.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedCoupons = filteredCoupons.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [merchantFilter, statusFilter, pageSize]);
+
   const totalViews = filteredCoupons.reduce((sum, coupon) => sum + (coupon.views || 0), 0);
   const totalLikes = filteredCoupons.reduce((sum, coupon) => sum + (coupon.likes || 0), 0);
   const totalRedemptions = filteredCoupons.reduce((sum, coupon) => sum + (coupon.redemptions || 0), 0);
@@ -552,7 +562,7 @@ export default function CouponsPage() {
         ) : (
           <>
             <div className="coupons-mobile-list mt-4 gap-3">
-              {filteredCoupons.map((coupon) => (
+              {paginatedCoupons.map((coupon) => (
                 <article
                   className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
                   key={coupon.id}
@@ -690,7 +700,7 @@ export default function CouponsPage() {
                 </div>
 
                 {/* Table Body */}
-                {filteredCoupons.map((coupon) => (
+                {paginatedCoupons.map((coupon) => (
                   <div
                     className="grid h-[60px] grid-cols-[minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
                     key={coupon.id}
@@ -799,6 +809,27 @@ export default function CouponsPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Showing {filteredCoupons.length === 0 ? 0 : (safePage - 1) * pageSize + 1}
+                -{Math.min(safePage * pageSize, filteredCoupons.length)} of {filteredCoupons.length} coupons
+              </span>
+              <div className="flex items-center gap-2">
+                <label htmlFor="coupon-page-size" className="whitespace-nowrap">Rows per page</label>
+                <select
+                  id="coupon-page-size"
+                  value={pageSize}
+                  onChange={(event) => setPageSize(Number(event.target.value))}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  {[5, 10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <button type="button" disabled={safePage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                <span className="min-w-16 text-center">{safePage} / {totalPages}</span>
+                <button type="button" disabled={safePage >= totalPages} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
               </div>
             </div>
           </>
