@@ -4,8 +4,16 @@
 
 [build.environment]
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
+  NEXT_PUBLIC_BASE_URL = "/backend-api"
 
 [[redirects]]
-  from = "/*"
-  to = "/index.html"
+  from = "/c/*"
+  to = "http://16.178.137.42/citydeals/api/c/:splat/open"
   status = 200
+  force = true
+
+[[redirects]]
+  from = "/backend-api/*"
+  to = "http://16.178.137.42/citydeals/api/:splat"
+  status = 200
+  force = true

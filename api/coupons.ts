@@ -60,6 +60,21 @@ export interface CouponPayload {
   status: "ACTIVE" | "ARCHIVED" | "PAUSED" | "EXPIRED";
 }
 
+export interface CouponReport {
+  coupon: CouponItem & {
+    merchant?: CouponItem['merchant'] & { address?: string; phone?: string | null; email?: string | null };
+    area?: CouponItem['area'] & { state?: string };
+  };
+  metrics: {
+    views: number; uniqueViewers: number; saves: number; redemptions: number;
+    shares: number; shareOpens: number; conversionRate: number; saveRate: number;
+    remainingRedemptions: number | null;
+  };
+  shareBreakdown: Array<{ channel: string; shares: number; opens: number; openRate: number }>;
+  redemptions: Array<{ id: string; createdAt: string; user: { fullName?: string | null; email?: string | null; phoneNumber?: string | null } }>;
+  generatedAt: string;
+}
+
 interface OptionRecord {
   id: string;
   name: string;
@@ -83,4 +98,5 @@ export const couponsApi = {
     apiClient.patch(`/coupons/${id}`, payload),
   delete: (id: string) => apiClient.delete(`/coupons/${id}`),
   notifyNearby: (id: string) => apiClient.post<{ sent: number; message: string }>(`/coupons/${id}/notify-nearby`),
+  report: (id: string) => apiClient.get<unknown, CouponReport>(`/admin/coupons/${id}/report`),
 };

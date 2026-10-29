@@ -1,12 +1,2 @@
-/dashboard /dashboard 200
-/businesses /businesses 200
-/categories /categories 200
-/coupons /coupons 200
-/notification /notification 200
-/notifications /notifications 200
-/users /users 200
-/staff-accounts /staff 200
-/staff /staff 200
-/roles-permissions /roles 200
-/roles /roles 200
-/* /index.html 200
+/backend-api/* http://16.178.137.42/citydeals/api/:splat 200!
+/c/* http://16.178.137.42/citydeals/api/c/:splat/open 200!
