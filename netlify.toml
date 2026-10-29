@@ -7,6 +7,12 @@
   NEXT_PUBLIC_BASE_URL = "/backend-api"
 
 [[redirects]]
+  from = "/c/*"
+  to = "http://16.178.137.42/citydeals/api/c/:splat/open"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/backend-api/*"
   to = "http://16.178.137.42/citydeals/api/:splat"
   status = 200

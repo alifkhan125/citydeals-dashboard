@@ -7,7 +7,8 @@ import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
 import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
-import { type CouponItem, type CouponPayload } from "@/api/coupons";
+import { couponsApi, type CouponItem, type CouponPayload } from "@/api/coupons";
+import { downloadCouponReport } from "@/lib/couponReportPdf";
 import {
   useCouponCategories,
   useCouponMerchants,
@@ -38,6 +39,7 @@ export default function CouponsPage() {
   const [couponToDelete, setCouponToDelete] = useState<CouponItem | null>(null);
   const [couponToNotify, setCouponToNotify] = useState<CouponItem | null>(null);
   const [openActionId, setOpenActionId] = useState<string | null>(null);
+  const [reportExportingId, setReportExportingId] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [merchantFilter, setMerchantFilter] = useState("All merchants");
@@ -76,6 +78,20 @@ export default function CouponsPage() {
   function showToast(message: string) {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 2500);
+  }
+
+  async function exportCouponDetailPdf(coupon: CouponItem) {
+    try {
+      setOpenActionId(null);
+      setReportExportingId(coupon.id);
+      const report = await couponsApi.report(coupon.id);
+      await downloadCouponReport(report);
+      toast.success(`${coupon.title} report downloaded`, { title: "PDF ready" });
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not generate coupon report"), { title: "Export failed" });
+    } finally {
+      setReportExportingId(null);
+    }
   }
 
   function getErrorMessage(error: unknown, fallback: string) {
@@ -608,6 +624,14 @@ export default function CouponsPage() {
                             Edit
                           </button>
                           <button
+                            className="block w-full px-3.5 py-2 text-left font-medium text-[#0c4a6e] hover:bg-sky-50 disabled:opacity-50"
+                            type="button"
+                            disabled={reportExportingId === coupon.id}
+                            onClick={() => exportCouponDetailPdf(coupon)}
+                          >
+                            {reportExportingId === coupon.id ? "Preparing PDF..." : "Export full PDF"}
+                          </button>
+                          <button
                             className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
                             type="button"
                             onClick={() => handleToggleStatus(coupon)}
@@ -782,6 +806,14 @@ export default function CouponsPage() {
                             onClick={() => handleEditCoupon(coupon)}
                           >
                             Edit
+                          </button>
+                          <button
+                            className="block w-full px-3.5 py-2 text-left font-medium text-[#0c4a6e] hover:bg-sky-50 disabled:opacity-50"
+                            type="button"
+                            disabled={reportExportingId === coupon.id}
+                            onClick={() => exportCouponDetailPdf(coupon)}
+                          >
+                            {reportExportingId === coupon.id ? "Preparing PDF..." : "Export full PDF"}
                           </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"

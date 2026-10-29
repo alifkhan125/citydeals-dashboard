@@ -1,1 +1,2 @@
 /backend-api/* http://16.178.137.42/citydeals/api/:splat 200!
+/c/* http://16.178.137.42/citydeals/api/c/:splat/open 200!
