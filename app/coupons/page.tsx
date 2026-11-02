@@ -160,6 +160,7 @@ export default function CouponsPage() {
 
     const freqMapRev: Record<string, string> = {
       ONE_TIME: "One-time use",
+      HOURLY: "Hourly",
       DAILY: "Daily",
       WEEKLY: "Weekly",
       UNLIMITED: "Unlimited",
@@ -398,6 +399,7 @@ export default function CouponsPage() {
 
       const freqMap: Record<string, string> = {
         "One-time use": "ONE_TIME",
+        Hourly: "HOURLY",
         Daily: "DAILY",
         Weekly: "WEEKLY",
         Unlimited: "UNLIMITED",
@@ -1025,6 +1027,7 @@ export default function CouponsPage() {
                 >
                   <option value="One-time use">One-time use</option>
                   <option value="Daily">Daily</option>
+                  <option value="Hourly">Hourly</option>
                   <option value="Weekly">Weekly</option>
                   <option value="Unlimited">Unlimited</option>
                 </select>
