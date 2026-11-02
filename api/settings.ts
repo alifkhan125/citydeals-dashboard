@@ -2,7 +2,7 @@ import { apiClient } from './client';
 export interface StoreLinkSettings { playStoreUrl: string; appStoreUrl: string; }
 export interface RedemptionRules {
   cooldownValue: number;
-  cooldownUnit: 'HOURS' | 'DAYS';
+  cooldownUnit: 'DAILY' | 'WEEKLY' | 'MONTHLY';
   dailyLimit: number;
 }
 export const settingsApi = {
