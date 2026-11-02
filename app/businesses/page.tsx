@@ -26,6 +26,14 @@ import {
 
 const assetBase = "/assets/dashboard/";
 
+function normalizeImageUrl(url?: string | null) {
+  if (!url) return null;
+  if (url.startsWith("http://res.cloudinary.com/")) {
+    return url.replace("http://", "https://");
+  }
+  return url;
+}
+
 export default function BusinessesPage() {
   const { data: businessList = [], isLoading: isBusinessesLoading } = useBusinesses();
   const { data: categories = [], isLoading: isCategoriesLoading } = useBusinessCategories();
@@ -475,10 +483,11 @@ export default function BusinessesPage() {
                       <span className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                         <Image
                           className="object-cover"
-                          src={location.logoUrl || `${assetBase}imgLocationAvatar.png`}
+                          src={normalizeImageUrl(location.logoUrl) || `${assetBase}imgLocationAvatar.png`}
                           alt=""
                           fill
                           sizes="44px"
+                          unoptimized
                         />
                       </span>
                       <div className="min-w-0">
@@ -600,10 +609,11 @@ export default function BusinessesPage() {
                     <span className="relative size-8 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
                       <Image
                         className="object-cover"
-                        src={location.logoUrl || `${assetBase}imgLocationAvatar.png`}
+                        src={normalizeImageUrl(location.logoUrl) || `${assetBase}imgLocationAvatar.png`}
                         alt=""
                         fill
                         sizes="32px"
+                        unoptimized
                       />
                     </span>
                     <span className="min-w-0">
@@ -725,10 +735,11 @@ export default function BusinessesPage() {
             <div className="relative size-16 shrink-0 overflow-hidden rounded-xl border-2 border-[#d1d5db] bg-white shadow-inner">
               <Image
                 className="object-cover"
-                src={logoPreview ?? `${assetBase}imgBusinessLogo.png`}
+                src={normalizeImageUrl(logoPreview) ?? `${assetBase}imgBusinessLogo.png`}
                 alt=""
                 fill
                 sizes="64px"
+                unoptimized
               />
             </div>
             <div className="flex-1">

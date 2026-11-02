@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
@@ -30,7 +30,9 @@ export default function CouponsPage() {
   const deleteCouponMutation = useDeleteCoupon();
   const notifyCouponMutation = useNotifyNearbyCoupon();
   const loading = isCouponsLoading || isMerchantsLoading || isCategoriesLoading;
-  const saving = createCouponMutation.isPending || updateCouponMutation.isPending;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const saving = isSubmitting || createCouponMutation.isPending || updateCouponMutation.isPending;
+  const saveInFlightRef = useRef(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -367,7 +369,7 @@ export default function CouponsPage() {
 
   const handleSaveCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving || deleteCouponMutation.isPending) return;
+    if (saveInFlightRef.current || saving || deleteCouponMutation.isPending) return;
     if (!offer.trim()) {
       showToast("Offer Title is required");
       return;
@@ -378,6 +380,10 @@ export default function CouponsPage() {
       return;
     }
 
+    // React state updates are asynchronous; use an immediate ref guard so a
+    // rapid double-click cannot create two identical coupons.
+    saveInFlightRef.current = true;
+    setIsSubmitting(true);
     try {
       let uploadedImageUrl = editingCoupon?.imageUrl || "";
 
@@ -425,6 +431,9 @@ export default function CouponsPage() {
     } catch (err: unknown) {
       console.error("Failed to save coupon:", err);
       toast.error(getErrorMessage(err, "Failed to save coupon"), { title: "Coupon Save Failed" });
+    } finally {
+      saveInFlightRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
