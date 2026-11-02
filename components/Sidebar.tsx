@@ -135,6 +135,12 @@ export default function Sidebar({
     }))
     .filter((section) => section.items.length > 0);
 
+  // The navigation itself is static. Render it immediately while permissions
+  // are being fetched, then remove restricted links once the API response is
+  // available. This keeps the sidebar visible during a page reload instead of
+  // showing a blank white panel.
+  const visibleSections = isLoading ? menuSections : filteredSections;
+
   return (
     <aside
       className={`flex h-svh flex-col overflow-y-auto border-r border-[#eef3f8] bg-white shadow-[0_1px_2px_-1px_rgba(12,74,110,0.16)] lg:sticky lg:top-0 lg:rounded-br-2xl ${className}`}
@@ -151,39 +157,38 @@ export default function Sidebar({
       </div>
 
       <nav className="flex-1 px-4 pb-4 pt-5" aria-label="Dashboard navigation">
-        {!isLoading &&
-          filteredSections.map((section) => (
-            <section className="mb-4" key={section.title}>
-              <h2 className="mb-2 px-4 text-xs font-medium leading-4 text-[#315576]">
-                {section.title}
-              </h2>
-              <div className="grid gap-1">
-                {section.items.map((item) => {
-                  const active = isItemActive(item);
-                  return (
-                    <Link
-                      className={
-                        active
-                          ? "flex min-h-10 items-center gap-2 rounded bg-[#0c4a6e] px-4 py-2 text-base leading-6 text-white [&_img]:brightness-0 [&_img]:invert"
-                          : "flex min-h-10 items-center gap-2 rounded px-4 py-2 text-base leading-6 text-[#475569] no-underline hover:bg-slate-50"
-                      }
-                      href={item.href}
-                      key={item.label}
-                      onClick={onNavigate}
-                    >
-                      <Image
-                        src={`${assetBase}${item.icon}`}
-                        alt=""
-                        width={20}
-                        height={20}
-                      />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
+        {visibleSections.map((section) => (
+          <section className="mb-4" key={section.title}>
+            <h2 className="mb-2 px-4 text-xs font-medium leading-4 text-[#315576]">
+              {section.title}
+            </h2>
+            <div className="grid gap-1">
+              {section.items.map((item) => {
+                const active = isItemActive(item);
+                return (
+                  <Link
+                    className={
+                      active
+                        ? "flex min-h-10 items-center gap-2 rounded bg-[#0c4a6e] px-4 py-2 text-base leading-6 text-white [&_img]:brightness-0 [&_img]:invert"
+                        : "flex min-h-10 items-center gap-2 rounded px-4 py-2 text-base leading-6 text-[#475569] no-underline hover:bg-slate-50"
+                    }
+                    href={item.href}
+                    key={item.label}
+                    onClick={onNavigate}
+                  >
+                    <Image
+                      src={`${assetBase}${item.icon}`}
+                      alt=""
+                      width={20}
+                      height={20}
+                    />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        ))}
       </nav>
 
       <div className="border-t border-black/10 p-4">

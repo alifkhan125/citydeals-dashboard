@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { toast } from '@/components/Toast';
 
-const baseURL = process.env.NEXT_PUBLIC_BASE_URL || "http://16.178.137.42/citydeals/api";
+const baseURL = process.env.NEXT_PUBLIC_BASE_URL;
 
 function getApiErrorMessage(error: any) {
   const message = error?.response?.data?.message;
