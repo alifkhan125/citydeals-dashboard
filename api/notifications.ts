@@ -44,6 +44,10 @@ export interface SendNotificationPayload {
 }
 
 export interface SendNotificationResponse {
+  scheduled?: boolean;
+  scheduledAt?: string;
+  repeat?: string;
+  nextScheduledAt?: string | null;
   recipients?: number;
   created?: number;
   push?: {

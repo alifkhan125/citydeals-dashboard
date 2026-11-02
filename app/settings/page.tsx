@@ -12,13 +12,11 @@ export default function SettingsPage() {
   const [appStoreUrl, setAppStoreUrl] = useState('');
   const [cooldownValue, setCooldownValue] = useState(0);
   const [cooldownUnit, setCooldownUnit] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY'>('DAILY');
-  const [dailyLimit, setDailyLimit] = useState(0);
   useEffect(() => { if (data) { setPlayStoreUrl(data.playStoreUrl); setAppStoreUrl(data.appStoreUrl); } }, [data]);
   useEffect(() => {
     if (redemptionRules) {
       setCooldownValue(redemptionRules.cooldownValue);
       setCooldownUnit(redemptionRules.cooldownUnit);
-      setDailyLimit(redemptionRules.dailyLimit);
     }
   }, [redemptionRules]);
   function isHttpsUrl(value: string) { try { return new URL(value).protocol === 'https:'; } catch { return false; } }
@@ -30,7 +28,7 @@ export default function SettingsPage() {
     });
   }
   function handleSaveRedemptionRules() {
-    updateRedemptionRules.mutate({ cooldownValue, cooldownUnit, dailyLimit }, {
+    updateRedemptionRules.mutate({ cooldownValue, cooldownUnit }, {
       onSuccess: () => toast.success('Coupon redemption rules saved.', { title: 'Rules saved' }),
       onError: () => toast.error('Could not save coupon redemption rules.', { title: 'Save failed' }),
     });
@@ -68,18 +66,6 @@ export default function SettingsPage() {
             </label>
           </div>
           <p className="mt-3 text-xs text-slate-500">Use <span className="font-semibold text-slate-700">0</span> to disable the global cooldown.</p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-slate-900">Daily maximum redemptions</h3>
-            <p className="mt-1 text-xs leading-5 text-slate-500">Maximum number of coupons one user can redeem per day.</p>
-          </div>
-          <label className="grid max-w-[260px] gap-1.5 text-xs font-medium text-slate-700">
-            <span>Redemptions per user</span>
-            <input type="number" min="0" step="1" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={dailyLimit} onChange={(e) => setDailyLimit(Math.max(0, Number(e.target.value) || 0))} />
-          </label>
-          <p className="mt-3 text-xs text-slate-500">Use <span className="font-semibold text-slate-700">0</span> for unlimited. This includes all coupons.</p>
         </div>
 
         <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between lg:col-span-2">

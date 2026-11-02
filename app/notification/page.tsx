@@ -122,6 +122,19 @@ export default function SendNotificationPage() {
 
       const res = await sendNotificationMutation.mutateAsync(payload);
 
+      if (res?.scheduled) {
+        const scheduledLabel = res.scheduledAt
+          ? new Date(res.scheduledAt).toLocaleString()
+          : "the selected time";
+        showToast(`Notification scheduled for ${scheduledLabel}.`);
+        setTitle("");
+        setMessage("");
+        setSendMode("NOW");
+        setScheduledAt("");
+        setRepeatMode("NONE");
+        return;
+      }
+
       const recipientCount = res?.recipients ?? 0;
       const pushSent = res?.push?.sent ?? 0;
       const pushSkipped = res?.push?.skipped ?? 0;

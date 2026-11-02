@@ -3,7 +3,6 @@ export interface StoreLinkSettings { playStoreUrl: string; appStoreUrl: string; 
 export interface RedemptionRules {
   cooldownValue: number;
   cooldownUnit: 'DAILY' | 'WEEKLY' | 'MONTHLY';
-  dailyLimit: number;
 }
 export const settingsApi = {
   getStoreLinks: () => apiClient.get<unknown, StoreLinkSettings>('/settings/store-links'),
