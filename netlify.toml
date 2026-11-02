@@ -1,3 +1,12 @@
 [build]
   command = "pnpm run build"
   publish = ".next"
+
+[build.environment]
+  NEXT_PUBLIC_BASE_URL = "/citydeals-api"
+
+[[redirects]]
+  from = "/citydeals-api/*"
+  to = "http://16.178.137.42/citydeals/api/:splat"
+  status = 200
+  force = true
