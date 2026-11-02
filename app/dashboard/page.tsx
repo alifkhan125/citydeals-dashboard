@@ -13,6 +13,7 @@ export default function Dashboard() {
   const trending = data?.trending ?? [];
   const areaRedemptions = data?.areaRedemptions ?? [];
   const dailyPoints = data?.dailyRedemptions ?? [];
+  const dailyTotal = dailyPoints.reduce((total, point) => total + point.count, 0);
 
   const statCards = [
     {
@@ -93,6 +94,23 @@ export default function Dashboard() {
     return { hourlyDistribution: buckets, maxDailyCount: max };
   }, [dailyPoints]);
 
+  const chartGeometry = useMemo(() => {
+    const width = 998;
+    const height = 210;
+    const baseline = 220;
+    const max = Math.max(...dailyPoints.map((point) => point.count), 1);
+    const points = dailyPoints.map((point, index) => {
+      const x = dailyPoints.length > 1 ? 6 + (index / (dailyPoints.length - 1)) * width : 6;
+      const y = baseline - (point.count / max) * height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    return {
+      line: points.join(" "),
+      fill: points.length > 0 ? `6,${baseline} ${points.join(" ")} ${6 + width},${baseline}` : "",
+    };
+  }, [dailyPoints]);
+
   return (
     <div className="w-full px-4 pb-10 pt-4 sm:px-6 lg:px-8 lg:pb-[79px] lg:pt-[18px]">
       {/* Header bar with live refresh */}
@@ -165,7 +183,7 @@ export default function Dashboard() {
               Daily Redemptions Activity
             </h2>
             <p className="mt-0.5 text-sm leading-5 text-slate-500">
-              Coupon redemptions recorded today across all areas ({dailyPoints.length} total events)
+              Coupon redemptions recorded today across all areas ({dailyTotal} total events)
             </p>
           </div>
           <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
@@ -195,17 +213,19 @@ export default function Dashboard() {
                   <stop offset="100%" stopColor="#fb923c" stopOpacity="0.04" />
                 </linearGradient>
               </defs>
-              <path
-                d="M 6 187 C 76 178 110 102 170 111 C 242 121 257 175 318 168 C 392 160 409 73 484 80 C 566 88 567 183 638 177 C 715 171 733 89 800 97 C 872 105 908 154 1004 136 L 1004 230 L 6 230 Z"
-                fill="url(#dailyFill)"
-              />
-              <path
-                d="M 6 187 C 76 178 110 102 170 111 C 242 121 257 175 318 168 C 392 160 409 73 484 80 C 566 88 567 183 638 177 C 715 171 733 89 800 97 C 872 105 908 154 1004 136"
-                fill="none"
-                stroke="#f97316"
-                strokeLinecap="round"
-                strokeWidth="3"
-              />
+              {chartGeometry.fill && (
+                <polygon points={chartGeometry.fill} fill="url(#dailyFill)" />
+              )}
+              {chartGeometry.line && (
+                <polyline
+                  points={chartGeometry.line}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="3"
+                />
+              )}
             </svg>
             <div className="absolute inset-x-0 bottom-0 flex justify-between text-xs leading-4 text-slate-400">
               {Object.keys(hourlyDistribution).map((label) => (
