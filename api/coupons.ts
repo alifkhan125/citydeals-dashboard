@@ -12,6 +12,7 @@ export interface CouponItem {
   discussion?: string | null;
   terms?: string | null;
   status: "ACTIVE" | "ARCHIVED" | "PAUSED" | "EXPIRED";
+  audience: "ALL_USERS" | "BIRTHDAY_USERS_ONLY" | "ALL_USERS_AND_BIRTHDAY_GIFT";
   startsAt?: string | null;
   expiresAt?: string | null;
   areaId?: string;
@@ -58,6 +59,7 @@ export interface CouponPayload {
   terms?: string;
   expiresAt?: string;
   status: "ACTIVE" | "ARCHIVED" | "PAUSED" | "EXPIRED";
+  audience?: "ALL_USERS" | "BIRTHDAY_USERS_ONLY" | "ALL_USERS_AND_BIRTHDAY_GIFT";
 }
 
 export interface CouponReport {
@@ -98,6 +100,7 @@ export const couponsApi = {
     merchantId?: string;
     categoryId?: string;
     areaId?: string;
+    audience?: string;
   }): Promise<CouponPageResult> => apiClient.get("/coupons/admin", { params }),
   adminIds: async (params: Record<string, string | number | undefined>): Promise<{ ids: string[] }> => apiClient.get("/coupons/admin", { params: { ...params, idsOnly: "true" } }),
   merchants: async (): Promise<CouponOption[]> => {

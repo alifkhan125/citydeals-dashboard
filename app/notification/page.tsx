@@ -188,7 +188,7 @@ export default function SendNotificationPage() {
       showToast(
         `Birthday perks ${
           birthdayPerksEnabled ? "enabled" : "disabled"
-        }: ${birthdayCategory}, ${birthdayLeadTime}.${checkMsg}`
+        }: ${birthdayCategory}, notifications scheduled 7 days before, 1 day before and on birthday.${checkMsg}`
       );
     } catch (err: unknown) {
       showToast(getErrorMessage(err, "Failed to save birthday perks"));
@@ -424,18 +424,12 @@ export default function SendNotificationPage() {
               </select>
             </label>
 
-            <label className="grid gap-1">
-              <span className="text-sm font-medium text-slate-900">Send time</span>
-              <select
-                className="h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-900 outline-none focus:border-orange-400 cursor-pointer"
-                value={birthdayLeadTime}
-                onChange={(event) => setBirthdayLeadTime(event.target.value)}
-              >
-                <option value="On birthday">On birthday</option>
-                <option value="1 day before">1 day before</option>
-                <option value="7 days before">7 days before</option>
-              </select>
-            </label>
+            <div className="grid gap-1">
+              <span className="text-sm font-medium text-slate-900">Notification schedule</span>
+              <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-slate-700">
+                7 days before&nbsp; • &nbsp;1 day before&nbsp; • &nbsp;On birthday
+              </div>
+            </div>
 
             <div className="mt-6 flex flex-wrap items-center gap-2 md:mt-auto">
               <button

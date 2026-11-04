@@ -33,6 +33,7 @@ export default function CouponsPage() {
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [merchantFilter, setMerchantFilter] = useState("All merchants");
   const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [audienceFilter, setAudienceFilter] = useState("ALL");
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedSearch(searchQuery), 350);
     return () => window.clearTimeout(timeout);
@@ -50,6 +51,7 @@ export default function CouponsPage() {
     merchantId: merchantFilter === "All merchants" ? undefined : merchants.find((item) => item.name === merchantFilter)?.id,
     categoryId: categoryFilter === "ALL" ? undefined : categoryFilter,
     areaId: areaFilter === "ALL" ? undefined : areaFilter,
+    audience: audienceFilter === "ALL" ? undefined : audienceFilter,
   });
   const coupons = couponPage?.items ?? [];
   const createCouponMutation = useCreateCoupon();
@@ -87,6 +89,7 @@ export default function CouponsPage() {
   const [frequency, setFrequency] = useState("One-time use");
   const [discussion, setDiscussion] = useState("");
   const [terms, setTerms] = useState("");
+  const [audience, setAudience] = useState<"ALL_USERS" | "BIRTHDAY_USERS_ONLY" | "ALL_USERS_AND_BIRTHDAY_GIFT">("ALL_USERS");
 
   useEffect(() => {
     return () => {
@@ -173,6 +176,7 @@ export default function CouponsPage() {
     setFrequency("One-time use");
     setDiscussion("");
     setTerms("");
+    setAudience("ALL_USERS");
     setLogoFile(null);
     setLogoPreview(null);
     setIsModalOpen(true);
@@ -205,6 +209,7 @@ export default function CouponsPage() {
     setFrequency(coupon.redemptionFrequency ? freqMapRev[coupon.redemptionFrequency] || "One-time use" : "One-time use");
     setDiscussion(coupon.discussion || "");
     setTerms(coupon.terms || "");
+    setAudience(coupon.audience || "ALL_USERS");
     setLogoFile(null);
     setLogoPreview(coupon.imageUrl || null);
     setIsModalOpen(true);
@@ -456,6 +461,7 @@ export default function CouponsPage() {
         expiresAt: expires ? new Date(`${expires}T23:59:59.000Z`).toISOString() : undefined,
         // Keep archived coupons out of the app until an admin explicitly publishes them.
         status: editingCoupon?.status || "ACTIVE",
+        audience,
       };
 
       if (editingCoupon) {
@@ -488,7 +494,7 @@ export default function CouponsPage() {
   useEffect(() => {
     setCurrentPage(1);
     setSelectedCouponIds([]);
-  }, [merchantFilter, statusFilter, areaFilter, categoryFilter, debouncedSearch, pageSize]);
+  }, [merchantFilter, statusFilter, areaFilter, categoryFilter, audienceFilter, debouncedSearch, pageSize]);
 
   const toggleCouponSelection = (id: string) => {
     setSelectedCouponIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -508,6 +514,7 @@ export default function CouponsPage() {
         merchantId: merchantFilter === "All merchants" ? undefined : merchants.find((item) => item.name === merchantFilter)?.id,
         categoryId: categoryFilter === "ALL" ? undefined : categoryFilter,
         areaId: areaFilter === "ALL" ? undefined : areaFilter,
+        audience: audienceFilter === "ALL" ? undefined : audienceFilter,
       });
       setSelectedCouponIds(result.ids);
     } catch (error) {
@@ -614,8 +621,8 @@ export default function CouponsPage() {
                 value={merchantFilter}
                 onChange={(event) => setMerchantFilter(event.target.value)}
               >
-                {merchantOptions.map((option) => (
-                  <option key={option} value={option}>
+                {merchantOptions.map((option, optionIndex) => (
+                  <option key={`${option}-${optionIndex}`} value={option}>
                     {option}
                   </option>
                 ))}
@@ -647,6 +654,15 @@ export default function CouponsPage() {
               <select className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
                 <option value="ALL">All categories</option>
                 {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </label>
+            <label className="grid min-w-0 gap-1">
+              <span className="text-xs font-medium text-slate-600">Audience</span>
+              <select className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm" value={audienceFilter} onChange={(event) => setAudienceFilter(event.target.value)}>
+                <option value="ALL">All audiences</option>
+                <option value="ALL_USERS">All users</option>
+                <option value="BIRTHDAY_USERS_ONLY">Birthday users only</option>
+                <option value="ALL_USERS_AND_BIRTHDAY_GIFT">All + birthday gift</option>
               </select>
             </label>
           </div>
@@ -868,6 +884,7 @@ export default function CouponsPage() {
                       <strong className="block truncate text-sm font-normal leading-5 text-slate-900">
                         {coupon.title}
                       </strong>
+                      {coupon.audience && coupon.audience !== "ALL_USERS" && <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">{coupon.audience === "BIRTHDAY_USERS_ONLY" ? "Birthday only" : "Birthday gift"}</span>}
                     </div>
 
                     {/* Business column */}
@@ -1103,6 +1120,21 @@ export default function CouponsPage() {
                 />
               </label>
             </div>
+
+            {/* Audience */}
+            <label className="grid gap-1">
+              <span className="text-xs font-semibold text-slate-800">Who can use this coupon?</span>
+              <select
+                value={audience}
+                onChange={(e) => setAudience(e.target.value as typeof audience)}
+                className="h-10 w-full rounded-xl border border-slate-200/70 bg-[#f8fafc] px-3.5 text-sm text-slate-800 outline-none transition-colors focus:border-slate-400 focus:bg-white"
+              >
+                <option value="ALL_USERS">All users</option>
+                <option value="BIRTHDAY_USERS_ONLY">Birthday users only</option>
+                <option value="ALL_USERS_AND_BIRTHDAY_GIFT">All users + birthday gift</option>
+              </select>
+              <span className="text-[11px] text-slate-500">Birthday options automatically connect this coupon to the birthday notification and claim flow.</span>
+            </label>
 
             {/* Row 3: Redemption Limit & Expires */}
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">

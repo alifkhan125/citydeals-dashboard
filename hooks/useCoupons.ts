@@ -18,6 +18,7 @@ export function useAdminCoupons(params: {
   merchantId?: string;
   categoryId?: string;
   areaId?: string;
+  audience?: string;
 }) {
   return useQuery({
     queryKey: ["admin-coupons", params],

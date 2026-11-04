@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-export interface StoreLinkSettings { playStoreUrl: string; appStoreUrl: string; }
+export interface StoreLinkSettings { baseUrl: string; playStoreUrl: string; appStoreUrl: string; }
 export interface RedemptionRules {
   cooldownValue: number;
   cooldownUnit: 'DAILY' | 'WEEKLY' | 'MONTHLY';
