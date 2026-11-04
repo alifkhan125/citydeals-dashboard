@@ -9,6 +9,14 @@ export function useBusinesses() {
   });
 }
 
+export function useAdminBusinesses(params: { page: number; limit: number; search?: string; areaId?: string; categoryId?: string; status?: string }) {
+  return useQuery({
+    queryKey: ["admin-businesses", params],
+    queryFn: () => businessesApi.adminList(params),
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useBusinessCategories() {
   return useQuery({
     queryKey: queryKeys.categories.all,
@@ -69,5 +77,21 @@ export function useDeleteBusiness() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.businesses.all });
     },
+  });
+}
+
+export function useBulkBusinessStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, status }: { ids: string[]; status: BusinessItem["status"] }) => businessesApi.bulkStatus(ids, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-businesses"] }),
+  });
+}
+
+export function useBulkDeleteBusinesses() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => businessesApi.bulkDelete(ids),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-businesses"] }),
   });
 }

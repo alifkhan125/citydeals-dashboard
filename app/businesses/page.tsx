@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
+import CsvImportModal from "@/components/CsvImportModal";
 import { toast } from "@/components/Toast";
 import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
 import { geocodingApi } from "@/api/geocoding";
 import { uploadImage } from "@/api/upload";
 import {
+  businessesApi,
   type AreaOption,
   type BusinessItem,
   type BusinessPayload,
@@ -17,6 +19,9 @@ import {
 } from "@/api/businesses";
 import {
   useBusinessAreas,
+  useAdminBusinesses,
+  useBulkBusinessStatus,
+  useBulkDeleteBusinesses,
   useBusinessCategories,
   useBusinesses,
   useCreateBusiness,
@@ -35,19 +40,37 @@ function normalizeImageUrl(url?: string | null) {
 }
 
 export default function BusinessesPage() {
-  const { data: businessList = [], isLoading: isBusinessesLoading } = useBusinesses();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedAreaFilter, setSelectedAreaFilter] = useState("ALL");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [selectedBusinessIds, setSelectedBusinessIds] = useState<string[]>([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
   const { data: categories = [], isLoading: isCategoriesLoading } = useBusinessCategories();
   const { data: areas = [], isLoading: isAreasLoading } = useBusinessAreas();
+  const { data: businessPage, isLoading: isBusinessesLoading } = useAdminBusinesses({
+    page: currentPage,
+    limit: pageSize,
+    search: debouncedSearch.trim() || undefined,
+    areaId: selectedAreaFilter === "ALL" ? undefined : selectedAreaFilter,
+    categoryId: categoryFilter === "ALL" ? undefined : categoryFilter,
+    status: selectedStatusFilter === "ALL" ? undefined : selectedStatusFilter,
+  });
+  const businessList = businessPage?.items ?? [];
   const createBusinessMutation = useCreateBusiness();
   const updateBusinessMutation = useUpdateBusiness();
   const deleteBusinessMutation = useDeleteBusiness();
+  const bulkStatusMutation = useBulkBusinessStatus();
+  const bulkDeleteMutation = useBulkDeleteBusinesses();
   const loading = isBusinessesLoading || isCategoriesLoading || isAreasLoading;
   const saving = createBusinessMutation.isPending || updateBusinessMutation.isPending;
-
-  // Filters & Search
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedAreaFilter, setSelectedAreaFilter] = useState("ALL");
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState("ALL");
 
   // Drawer / Modal state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -357,28 +380,47 @@ export default function BusinessesPage() {
   }
 
   // Filtered businesses
-  const filteredBusinesses = useMemo(() => {
-    return businessList.filter((b) => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchesSearch =
-        !q ||
-        b.name.toLowerCase().includes(q) ||
-        (b.titleText && b.titleText.toLowerCase().includes(q)) ||
-        (b.address && b.address.toLowerCase().includes(q)) ||
-        (b.category?.name && b.category.name.toLowerCase().includes(q)) ||
-        (b.area?.name && b.area.name.toLowerCase().includes(q)) ||
-        (b.phone && b.phone.toLowerCase().includes(q)) ||
-        (b.email && b.email.toLowerCase().includes(q));
+  const filteredBusinesses = businessList;
+  const totalPages = businessPage?.meta.totalPages ?? 1;
+  const totalResults = businessPage?.meta.total ?? 0;
+  const allVisibleSelected = businessList.length > 0 && businessList.every((item) => selectedBusinessIds.includes(item.id));
+  const toggleVisibleSelection = () => setSelectedBusinessIds((current) => allVisibleSelected
+    ? current.filter((id) => !businessList.some((item) => item.id === id))
+    : Array.from(new Set([...current, ...businessList.map((item) => item.id)])));
+  const toggleBusinessSelection = (id: string) => setSelectedBusinessIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  async function selectAllFilteredBusinesses() {
+    try {
+      const result = await businessesApi.adminIds({ search: debouncedSearch.trim() || undefined, areaId: selectedAreaFilter === "ALL" ? undefined : selectedAreaFilter, categoryId: categoryFilter === "ALL" ? undefined : categoryFilter, status: selectedStatusFilter === "ALL" ? undefined : selectedStatusFilter });
+      setSelectedBusinessIds(result.ids);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not select filtered businesses"), { title: "Selection failed" });
+    }
+  }
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedBusinessIds([]);
+  }, [debouncedSearch, selectedAreaFilter, selectedStatusFilter, categoryFilter, pageSize]);
 
-      const matchesArea =
-        selectedAreaFilter === "ALL" || b.areaId === selectedAreaFilter;
+  async function runBulkBusinessStatus(status: "ACTIVE" | "INACTIVE") {
+    try {
+      await bulkStatusMutation.mutateAsync({ ids: selectedBusinessIds, status });
+      toast.success(`${selectedBusinessIds.length} businesses updated`, { title: "Bulk update complete" });
+      setSelectedBusinessIds([]);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Bulk update failed"), { title: "Bulk update failed" });
+    }
+  }
 
-      const matchesStatus =
-        selectedStatusFilter === "ALL" || b.status === selectedStatusFilter;
-
-      return matchesSearch && matchesArea && matchesStatus;
-    });
-  }, [businessList, searchQuery, selectedAreaFilter, selectedStatusFilter]);
+  async function runBulkBusinessDelete() {
+    if (!selectedBusinessIds.length || !window.confirm(`Delete ${selectedBusinessIds.length} selected businesses?`)) return;
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedBusinessIds);
+      toast.success(`${selectedBusinessIds.length} businesses deleted`, { title: "Bulk delete complete" });
+      setSelectedBusinessIds([]);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Bulk delete failed"), { title: "Bulk delete failed" });
+    }
+  }
 
   return (
     <div className="w-full p-4 sm:p-6 lg:p-8">
@@ -401,6 +443,7 @@ export default function BusinessesPage() {
             <Image src={`${assetBase}imgAdd.svg`} alt="" width={20} height={20} />
             Add New Business
           </button>
+          <button type="button" onClick={() => setIsImportOpen(true)} className="h-11 rounded-xl border border-orange-300 px-4 py-2.5 text-sm font-semibold text-orange-700">Import CSV</button>
         </div>
 
         {/* Search & Filter Bar */}
@@ -441,8 +484,28 @@ export default function BusinessesPage() {
               <option value="ACTIVE">Published</option>
               <option value="INACTIVE">Archived</option>
             </select>
+
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
+            >
+              <option value="ALL">All Categories</option>
+              {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
           </div>
         </div>
+
+        {selectedBusinessIds.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
+            <span className="mr-2 text-sm font-semibold text-orange-800">{selectedBusinessIds.length} selected</span>
+            <button type="button" onClick={() => runBulkBusinessStatus("ACTIVE")} disabled={bulkStatusMutation.isPending} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Publish</button>
+            <button type="button" onClick={() => runBulkBusinessStatus("INACTIVE")} disabled={bulkStatusMutation.isPending} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Archive</button>
+            <button type="button" onClick={runBulkBusinessDelete} disabled={bulkDeleteMutation.isPending} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Delete</button>
+            <button type="button" onClick={() => setSelectedBusinessIds([])} className="rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-semibold text-orange-800">Clear</button>
+          </div>
+        )}
+        <button type="button" onClick={selectAllFilteredBusinesses} className="mt-3 text-left text-xs font-semibold text-orange-700 underline">Select all filtered businesses</button>
 
         {/* Content area */}
         {loading ? (
@@ -473,6 +536,7 @@ export default function BusinessesPage() {
           <>
             {/* Mobile Cards View */}
             <div className="mt-4 grid gap-3 lg:hidden">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} /> Select current page</label>
               {filteredBusinesses.map((location) => (
                 <article
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -480,6 +544,7 @@ export default function BusinessesPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 gap-3">
+                      <input type="checkbox" checked={selectedBusinessIds.includes(location.id)} onChange={() => toggleBusinessSelection(location.id)} aria-label={`Select ${location.name}`} />
                       <span className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                         <Image
                           className="object-cover"
@@ -583,7 +648,8 @@ export default function BusinessesPage() {
 
             {/* Desktop Table View */}
             <div className="mt-4 hidden overflow-visible rounded-lg border border-slate-200 lg:block">
-              <div className="grid h-[55px] grid-cols-[minmax(220px,1.4fr)_minmax(170px,1fr)_130px_130px_180px_100px_80px] items-center bg-slate-100 text-sm font-medium leading-5 text-[#315576]">
+              <div className="grid h-[55px] grid-cols-[42px_minmax(220px,1.4fr)_minmax(170px,1fr)_130px_130px_180px_100px_80px] items-center bg-slate-100 text-sm font-medium leading-5 text-[#315576]">
+                <div className="border-r border-slate-300 px-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Select current page" /></div>
                 {[
                   "Location name",
                   "Location",
@@ -601,9 +667,11 @@ export default function BusinessesPage() {
 
               {filteredBusinesses.map((location) => (
                 <div
-                  className="grid h-[56px] grid-cols-[minmax(220px,1.4fr)_minmax(170px,1fr)_130px_130px_180px_100px_80px] items-center border-b border-dashed border-slate-200 bg-white last:border-b-0 hover:bg-slate-50/50 transition-colors"
+                  className="grid h-[56px] grid-cols-[42px_minmax(220px,1.4fr)_minmax(170px,1fr)_130px_130px_180px_100px_80px] items-center border-b border-dashed border-slate-200 bg-white last:border-b-0 hover:bg-slate-50/50 transition-colors"
                   key={location.id}
                 >
+                  <div className="px-3"><input type="checkbox" checked={selectedBusinessIds.includes(location.id)} onChange={() => toggleBusinessSelection(location.id)} aria-label={`Select ${location.name}`} /></div>
+
                   {/* Name + Logo */}
                   <div className="flex min-w-0 items-center gap-3 px-3 py-2">
                     <span className="relative size-8 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
@@ -714,6 +782,21 @@ export default function BusinessesPage() {
               ))}
             </div>
           </>
+        )}
+
+        {!loading && totalResults > 0 && (
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+            <span>Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalResults)} of {totalResults} businesses</span>
+            <div className="flex items-center gap-2">
+              <label htmlFor="business-page-size">Rows per page</label>
+              <select id="business-page-size" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">
+                {[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+              <button type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => page - 1)} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40">Previous</button>
+              <span>{currentPage} / {totalPages}</span>
+              <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((page) => page + 1)} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40">Next</button>
+            </div>
+          </div>
         )}
       </section>
 
@@ -1057,6 +1140,14 @@ export default function BusinessesPage() {
         </form>
       </Modal>
       <DeleteWarningModal isOpen={Boolean(businessToDelete)} itemName={businessToDelete?.name} entityLabel="business" pending={deleteBusinessMutation.isPending} onClose={() => setBusinessToDelete(null)} onConfirm={confirmDeleteBusiness} />
+      <CsvImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        title="Import Businesses CSV"
+        headers={["name", "description", "titleText", "category", "area", "address", "phone", "email", "websiteUrl", "instagramUrl", "facebookUrl", "tiktokUrl", "radiusMeters", "status", "logoUrl"]}
+        importCsv={businessesApi.importCsv}
+        onImported={() => setIsImportOpen(false)}
+      />
 
       {/* Floating Toast Notice */}
       {toastMessage && (

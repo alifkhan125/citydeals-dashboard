@@ -5,14 +5,19 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
+import CsvImportModal from "@/components/CsvImportModal";
 import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
 import { couponsApi, type CouponItem, type CouponPayload } from "@/api/coupons";
 import { downloadCouponReport } from "@/lib/couponReportPdf";
 import {
   useCouponCategories,
+  useCouponAreas,
   useCouponMerchants,
-  useCoupons,
+  useAdminCoupons,
+  useBulkCouponStatus,
+  useBulkDeleteCoupons,
+  useDuplicateCoupon,
   useCreateCoupon,
   useDeleteCoupon,
   useUpdateCoupon,
@@ -22,14 +27,39 @@ import {
 const assetBase = "/assets/dashboard/";
 
 export default function CouponsPage() {
-  const { data: coupons = [], isLoading: isCouponsLoading } = useCoupons();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [areaFilter, setAreaFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [merchantFilter, setMerchantFilter] = useState("All merchants");
+  const [statusFilter, setStatusFilter] = useState("All statuses");
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
   const { data: merchants = [], isLoading: isMerchantsLoading } = useCouponMerchants();
+  const { data: areas = [], isLoading: isAreasLoading } = useCouponAreas();
   const { data: categories = [], isLoading: isCategoriesLoading } = useCouponCategories();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const { data: couponPage, isLoading: isCouponsLoading } = useAdminCoupons({
+    page: currentPage,
+    limit: pageSize,
+    search: debouncedSearch.trim() || undefined,
+    status: statusFilter === "Published" ? "ACTIVE" : statusFilter === "Archived" ? "ARCHIVED" : statusFilter === "Expired" ? "EXPIRED" : undefined,
+    merchantId: merchantFilter === "All merchants" ? undefined : merchants.find((item) => item.name === merchantFilter)?.id,
+    categoryId: categoryFilter === "ALL" ? undefined : categoryFilter,
+    areaId: areaFilter === "ALL" ? undefined : areaFilter,
+  });
+  const coupons = couponPage?.items ?? [];
   const createCouponMutation = useCreateCoupon();
   const updateCouponMutation = useUpdateCoupon();
   const deleteCouponMutation = useDeleteCoupon();
+  const bulkStatusMutation = useBulkCouponStatus();
+  const bulkDeleteMutation = useBulkDeleteCoupons();
+  const duplicateCouponMutation = useDuplicateCoupon();
   const notifyCouponMutation = useNotifyNearbyCoupon();
-  const loading = isCouponsLoading || isMerchantsLoading || isCategoriesLoading;
+  const loading = isCouponsLoading || isMerchantsLoading || isCategoriesLoading || isAreasLoading;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const saving = isSubmitting || createCouponMutation.isPending || updateCouponMutation.isPending;
   const saveInFlightRef = useRef(false);
@@ -44,10 +74,8 @@ export default function CouponsPage() {
   const [reportExportingId, setReportExportingId] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [merchantFilter, setMerchantFilter] = useState("All merchants");
-  const [statusFilter, setStatusFilter] = useState("All statuses");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
 
   // Form states
   const [offer, setOffer] = useState("");
@@ -105,6 +133,15 @@ export default function CouponsPage() {
     }
     if (error instanceof Error) return error.message;
     return fallback;
+  }
+
+  async function handleDuplicateCoupon(coupon: CouponItem) {
+    try {
+      await duplicateCouponMutation.mutateAsync(coupon.id);
+      toast.success(`${coupon.title} duplicated as an archived draft`, { title: "Coupon duplicated" });
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not duplicate coupon"), { title: "Duplicate failed" });
+    }
   }
 
   function toggleActionMenu(event: React.MouseEvent<HTMLButtonElement>, id: string) {
@@ -252,7 +289,7 @@ export default function CouponsPage() {
   }
 
   function getExportRows() {
-    return filteredCoupons.map((coupon) => ({
+    return coupons.map((coupon) => ({
       Offer: coupon.title,
       Business: coupon.merchant?.name || "Unknown",
       Category: coupon.category?.name || "General",
@@ -350,7 +387,7 @@ export default function CouponsPage() {
   }
 
   async function handleExport(format: "CSV" | "PDF") {
-    if (filteredCoupons.length === 0) {
+    if (coupons.length === 0) {
       showToast("No coupon data to export");
       return;
     }
@@ -418,7 +455,7 @@ export default function CouponsPage() {
         terms: terms.trim() || undefined,
         expiresAt: expires ? new Date(`${expires}T23:59:59.000Z`).toISOString() : undefined,
         // Keep archived coupons out of the app until an admin explicitly publishes them.
-        status: editingCoupon?.status || "ARCHIVED",
+        status: editingCoupon?.status || "ACTIVE",
       };
 
       if (editingCoupon) {
@@ -439,34 +476,66 @@ export default function CouponsPage() {
     }
   };
 
-  const merchantOptions = [
-    "All merchants",
-    ...Array.from(new Set(coupons.map((c) => c.merchant?.name).filter(Boolean) as string[])),
-  ];
-
-  const filteredCoupons = coupons.filter((coupon) => {
-    const merchantName = coupon.merchant?.name || "";
-    const merchantMatches =
-      merchantFilter === "All merchants" || merchantName === merchantFilter;
-
-    const statusLabel = getStatusLabel(coupon.status);
-    const statusMatches =
-      statusFilter === "All statuses" || statusLabel === statusFilter;
-
-    return merchantMatches && statusMatches;
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredCoupons.length / pageSize));
+  const merchantOptions = ["All merchants", ...merchants.map((merchant) => merchant.name)];
+  const totalPages = couponPage?.meta.totalPages ?? 1;
   const safePage = Math.min(currentPage, totalPages);
-  const paginatedCoupons = filteredCoupons.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const paginatedCoupons = coupons;
+  const totalResults = couponPage?.meta.total ?? 0;
+  const totalViews = coupons.reduce((sum, coupon) => sum + (coupon.views || 0), 0);
+  const totalLikes = coupons.reduce((sum, coupon) => sum + (coupon.likes || 0), 0);
+  const totalRedemptions = coupons.reduce((sum, coupon) => sum + (coupon.redemptions || 0), 0);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [merchantFilter, statusFilter, pageSize]);
+    setSelectedCouponIds([]);
+  }, [merchantFilter, statusFilter, areaFilter, categoryFilter, debouncedSearch, pageSize]);
 
-  const totalViews = filteredCoupons.reduce((sum, coupon) => sum + (coupon.views || 0), 0);
-  const totalLikes = filteredCoupons.reduce((sum, coupon) => sum + (coupon.likes || 0), 0);
-  const totalRedemptions = filteredCoupons.reduce((sum, coupon) => sum + (coupon.redemptions || 0), 0);
+  const toggleCouponSelection = (id: string) => {
+    setSelectedCouponIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+
+  const allVisibleSelected = coupons.length > 0 && coupons.every((coupon) => selectedCouponIds.includes(coupon.id));
+  const toggleVisibleSelection = () => {
+    setSelectedCouponIds((current) => allVisibleSelected
+      ? current.filter((id) => !coupons.some((coupon) => coupon.id === id))
+      : Array.from(new Set([...current, ...coupons.map((coupon) => coupon.id)])));
+  };
+  async function selectAllFilteredCoupons() {
+    try {
+      const result = await couponsApi.adminIds({
+        search: debouncedSearch.trim() || undefined,
+        status: statusFilter === "Published" ? "ACTIVE" : statusFilter === "Archived" ? "ARCHIVED" : statusFilter === "Expired" ? "EXPIRED" : undefined,
+        merchantId: merchantFilter === "All merchants" ? undefined : merchants.find((item) => item.name === merchantFilter)?.id,
+        categoryId: categoryFilter === "ALL" ? undefined : categoryFilter,
+        areaId: areaFilter === "ALL" ? undefined : areaFilter,
+      });
+      setSelectedCouponIds(result.ids);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not select filtered coupons"), { title: "Selection failed" });
+    }
+  }
+
+  async function runBulkStatus(status: "ACTIVE" | "ARCHIVED") {
+    if (selectedCouponIds.length === 0) return;
+    try {
+      await bulkStatusMutation.mutateAsync({ ids: selectedCouponIds, status });
+      toast.success(`${selectedCouponIds.length} coupons updated`, { title: "Bulk update complete" });
+      setSelectedCouponIds([]);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Bulk update failed"), { title: "Bulk update failed" });
+    }
+  }
+
+  async function runBulkDelete() {
+    if (selectedCouponIds.length === 0 || !window.confirm(`Delete ${selectedCouponIds.length} selected coupons?`)) return;
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedCouponIds);
+      toast.success(`${selectedCouponIds.length} coupons deleted`, { title: "Bulk delete complete" });
+      setSelectedCouponIds([]);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Bulk delete failed"), { title: "Bulk delete failed" });
+    }
+  }
 
   return (
     <div className="w-full px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
@@ -507,6 +576,7 @@ export default function CouponsPage() {
             <Image src={`${assetBase}imgAdd.svg`} alt="" width={24} height={24} />
             New coupon
           </button>
+          <button type="button" onClick={() => setIsImportOpen(true)} className="h-12 rounded-xl border border-orange-300 px-4 py-3 text-sm font-semibold text-orange-700">Import CSV</button>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -527,7 +597,16 @@ export default function CouponsPage() {
         </div>
 
         <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <label className="grid min-w-0 gap-1 lg:col-span-2">
+              <span className="text-xs font-medium text-slate-600">Search</span>
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search title, description, code or business..."
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-orange-400"
+              />
+            </label>
             <label className="grid min-w-0 gap-1">
               <span className="text-xs font-medium text-slate-600">Merchant</span>
               <select
@@ -556,6 +635,20 @@ export default function CouponsPage() {
                 ))}
               </select>
             </label>
+            <label className="grid min-w-0 gap-1">
+              <span className="text-xs font-medium text-slate-600">Area</span>
+              <select className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+                <option value="ALL">All areas</option>
+                {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+              </select>
+            </label>
+            <label className="grid min-w-0 gap-1">
+              <span className="text-xs font-medium text-slate-600">Category</span>
+              <select className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+                <option value="ALL">All categories</option>
+                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </label>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
             {(["CSV", "PDF"] as const).map((format) => (
@@ -572,11 +665,22 @@ export default function CouponsPage() {
           </div>
         </div>
 
+        {selectedCouponIds.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
+            <span className="mr-2 text-sm font-semibold text-orange-800">{selectedCouponIds.length} selected</span>
+            <button type="button" onClick={() => runBulkStatus("ACTIVE")} disabled={bulkStatusMutation.isPending} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Publish</button>
+            <button type="button" onClick={() => runBulkStatus("ARCHIVED")} disabled={bulkStatusMutation.isPending} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Archive</button>
+            <button type="button" onClick={runBulkDelete} disabled={bulkDeleteMutation.isPending} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Delete</button>
+            <button type="button" onClick={() => setSelectedCouponIds([])} className="rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-semibold text-orange-800">Clear</button>
+          </div>
+        )}
+        <button type="button" onClick={selectAllFilteredCoupons} className="mt-3 text-left text-xs font-semibold text-orange-700 underline">Select all filtered coupons</button>
+
         {loading ? (
           <div className="flex h-48 items-center justify-center text-sm text-slate-500">
             Loading coupons from server...
           </div>
-        ) : filteredCoupons.length === 0 ? (
+        ) : coupons.length === 0 ? (
           <div className="flex h-48 flex-col items-center justify-center gap-2 text-slate-500">
             <p className="text-sm">No coupons found.</p>
             <button
@@ -589,6 +693,10 @@ export default function CouponsPage() {
         ) : (
           <>
             <div className="coupons-mobile-list mt-4 gap-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} />
+                Select current page
+              </label>
               {paginatedCoupons.map((coupon) => (
                 <article
                   className="relative rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
@@ -596,6 +704,7 @@ export default function CouponsPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
+                      <input type="checkbox" checked={selectedCouponIds.includes(coupon.id)} onChange={() => toggleCouponSelection(coupon.id)} aria-label={`Select ${coupon.title}`} />
                       <span className="relative size-10 shrink-0 overflow-hidden rounded bg-slate-100">
                         <Image
                           className="object-cover"
@@ -634,6 +743,7 @@ export default function CouponsPage() {
                           >
                             Edit
                           </button>
+                          <button className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50" type="button" onClick={() => handleDuplicateCoupon(coupon)} disabled={duplicateCouponMutation.isPending}>Duplicate</button>
                           <button
                             className="block w-full px-3.5 py-2 text-left font-medium text-[#0c4a6e] hover:bg-sky-50 disabled:opacity-50"
                             type="button"
@@ -722,7 +832,8 @@ export default function CouponsPage() {
             <div className="coupons-desktop-table mt-4 overflow-x-auto overflow-y-visible rounded-lg border border-slate-200">
               <div className="min-w-[1120px]">
                 {/* Table Header */}
-                <div className="grid h-[55px] grid-cols-[minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
+                <div className="grid h-[55px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
+                  <div className="border-r border-slate-300 px-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Select current page" /></div>
                   <div className="border-r border-slate-300 px-4">Offer</div>
                   <div className="border-r border-slate-300 px-4">Business</div>
                   <div className="border-r border-slate-300 px-4">Badge</div>
@@ -737,9 +848,11 @@ export default function CouponsPage() {
                 {/* Table Body */}
                 {paginatedCoupons.map((coupon) => (
                   <div
-                    className="grid h-[60px] grid-cols-[minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
+                    className="grid h-[60px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
                     key={coupon.id}
                   >
+                    <div className="px-3"><input type="checkbox" checked={selectedCouponIds.includes(coupon.id)} onChange={() => toggleCouponSelection(coupon.id)} aria-label={`Select ${coupon.title}`} /></div>
+
                     {/* Offer column */}
                     <div className="flex min-w-0 items-center gap-3 px-4 py-2">
                       <span className="relative size-8 shrink-0 overflow-hidden rounded bg-slate-100">
@@ -818,6 +931,7 @@ export default function CouponsPage() {
                           >
                             Edit
                           </button>
+                        <button className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50" type="button" onClick={() => handleDuplicateCoupon(coupon)} disabled={duplicateCouponMutation.isPending}>Duplicate</button>
                           <button
                             className="block w-full px-3.5 py-2 text-left font-medium text-[#0c4a6e] hover:bg-sky-50 disabled:opacity-50"
                             type="button"
@@ -857,8 +971,8 @@ export default function CouponsPage() {
 
             <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
               <span>
-                Showing {filteredCoupons.length === 0 ? 0 : (safePage - 1) * pageSize + 1}
-                -{Math.min(safePage * pageSize, filteredCoupons.length)} of {filteredCoupons.length} coupons
+                Showing {totalResults === 0 ? 0 : (safePage - 1) * pageSize + 1}
+                -{Math.min(safePage * pageSize, totalResults)} of {totalResults} coupons
               </span>
               <div className="flex items-center gap-2">
                 <label htmlFor="coupon-page-size" className="whitespace-nowrap">Rows per page</label>
@@ -868,7 +982,7 @@ export default function CouponsPage() {
                   onChange={(event) => setPageSize(Number(event.target.value))}
                   className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
                 >
-                  {[5, 10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+                  {[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
                 </select>
                 <button type="button" disabled={safePage <= 1} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
                 <span className="min-w-16 text-center">{safePage} / {totalPages}</span>
@@ -1096,6 +1210,15 @@ export default function CouponsPage() {
         pending={deleteCouponMutation.isPending}
         onClose={() => setCouponToDelete(null)}
         onConfirm={confirmDeleteCoupon}
+      />
+
+      <CsvImportModal
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        title="Import Coupons CSV"
+        headers={["title", "description", "business", "category", "area", "couponCode", "couponLink", "redemptionLimit", "redemptionFrequency", "startsAt", "expiresAt", "status", "terms", "discussion", "imageUrl"]}
+        importCsv={couponsApi.importCsv}
+        onImported={() => setIsImportOpen(false)}
       />
 
       {/* Confirmation Modal for Notify Nearby */}

@@ -66,11 +66,19 @@ export interface BusinessPayload {
   logoUrl?: string;
 }
 
+export interface BusinessPageResult {
+  items: BusinessItem[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
 export const businessesApi = {
   list: async (): Promise<BusinessItem[]> => {
     const data = await apiClient.get<unknown, BusinessItem[]>("/merchants");
     return Array.isArray(data) ? data : [];
   },
+  adminList: async (params: { page: number; limit: number; search?: string; areaId?: string; categoryId?: string; status?: string }): Promise<BusinessPageResult> =>
+    apiClient.get("/merchants/admin", { params }),
+  adminIds: async (params: Record<string, string | number | undefined>): Promise<{ ids: string[] }> => apiClient.get("/merchants/admin", { params: { ...params, idsOnly: "true" } }),
   categories: async (): Promise<CategoryOption[]> => {
     const data = await apiClient.get<unknown, CategoryOption[]>("/categories");
     return Array.isArray(data) ? data : [];
@@ -83,4 +91,7 @@ export const businessesApi = {
   update: ({ id, payload }: { id: string; payload: Partial<BusinessPayload> }) =>
     apiClient.patch(`/merchants/${id}`, payload),
   delete: (id: string) => apiClient.delete(`/merchants/${id}`),
+  bulkStatus: (ids: string[], status: BusinessItem["status"]) => apiClient.patch("/merchants/admin/bulk-status", { ids, status }),
+  bulkDelete: (ids: string[]) => apiClient.delete("/merchants/admin/bulk", { data: { ids } }),
+  importCsv: async (csv: string): Promise<{ imported: number; failed: number; errors?: Array<{ row: number; message: string }> }> => (apiClient.post("/merchants/admin/import", { csv }) as any),
 };

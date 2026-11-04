@@ -75,6 +75,11 @@ export interface CouponReport {
   generatedAt: string;
 }
 
+export interface CouponPageResult {
+  items: CouponItem[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
 interface OptionRecord {
   id: string;
   name: string;
@@ -85,6 +90,16 @@ export const couponsApi = {
     const data = await apiClient.get<unknown, CouponItem[]>("/coupons");
     return Array.isArray(data) ? data : [];
   },
+  adminList: async (params: {
+    page: number;
+    limit: number;
+    search?: string;
+    status?: string;
+    merchantId?: string;
+    categoryId?: string;
+    areaId?: string;
+  }): Promise<CouponPageResult> => apiClient.get("/coupons/admin", { params }),
+  adminIds: async (params: Record<string, string | number | undefined>): Promise<{ ids: string[] }> => apiClient.get("/coupons/admin", { params: { ...params, idsOnly: "true" } }),
   merchants: async (): Promise<CouponOption[]> => {
     const data = await apiClient.get<unknown, OptionRecord[]>("/merchants");
     return Array.isArray(data) ? data.map(({ id, name }) => ({ id, name })) : [];
@@ -97,6 +112,11 @@ export const couponsApi = {
   update: ({ id, payload }: { id: string; payload: Partial<CouponPayload> }) =>
     apiClient.patch(`/coupons/${id}`, payload),
   delete: (id: string) => apiClient.delete(`/coupons/${id}`),
+  bulkStatus: (ids: string[], status: CouponItem["status"]) =>
+    apiClient.patch("/coupons/admin/bulk-status", { ids, status }),
+  bulkDelete: (ids: string[]) => apiClient.delete("/coupons/admin/bulk", { data: { ids } }),
+  duplicate: (id: string) => apiClient.post(`/coupons/${id}/duplicate`),
+  importCsv: async (csv: string): Promise<{ imported: number; failed: number; errors?: Array<{ row: number; message: string }> }> => (apiClient.post("/coupons/admin/import", { csv }) as any),
   notifyNearby: (id: string) => apiClient.post<{ sent: number; message: string }>(`/coupons/${id}/notify-nearby`),
   report: (id: string) => apiClient.get<unknown, CouponReport>(`/admin/coupons/${id}/report`),
 };

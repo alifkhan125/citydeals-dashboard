@@ -1,11 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { couponsApi, type CouponItem } from "@/api/coupons";
 import { queryKeys } from "@/api/queryKeys";
+import { areasApi } from "@/api/areas";
 
 export function useCoupons() {
   return useQuery({
     queryKey: queryKeys.coupons.all,
     queryFn: couponsApi.list,
+  });
+}
+
+export function useAdminCoupons(params: {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: string;
+  merchantId?: string;
+  categoryId?: string;
+  areaId?: string;
+}) {
+  return useQuery({
+    queryKey: ["admin-coupons", params],
+    queryFn: () => couponsApi.adminList(params),
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -20,6 +37,13 @@ export function useCouponCategories() {
   return useQuery({
     queryKey: queryKeys.categories.all,
     queryFn: couponsApi.categories,
+  });
+}
+
+export function useCouponAreas() {
+  return useQuery({
+    queryKey: queryKeys.areas.all,
+    queryFn: areasApi.list,
   });
 }
 
@@ -69,6 +93,30 @@ export function useDeleteCoupon() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.coupons.all });
     },
+  });
+}
+
+export function useBulkCouponStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, status }: { ids: string[]; status: CouponItem["status"] }) => couponsApi.bulkStatus(ids, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }),
+  });
+}
+
+export function useBulkDeleteCoupons() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => couponsApi.bulkDelete(ids),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }),
+  });
+}
+
+export function useDuplicateCoupon() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => couponsApi.duplicate(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }),
   });
 }
 
