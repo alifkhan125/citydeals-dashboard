@@ -9,6 +9,10 @@ export function useCategories() {
   });
 }
 
+export function useAdminCategories(params: { page: number; limit: number; search?: string; status?: string }) {
+  return useQuery({ queryKey: ["admin-categories", params], queryFn: () => categoriesApi.adminList(params), placeholderData: (previous) => previous });
+}
+
 export function useCreateCategory() {
   const queryClient = useQueryClient();
 
@@ -56,4 +60,14 @@ export function useDeleteCategory() {
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
     },
   });
+}
+
+export function useBulkCategoryStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: ({ ids, status }: { ids: string[]; status: Category["status"] }) => categoriesApi.bulkStatus(ids, status), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-categories"] }) });
+}
+
+export function useBulkDeleteCategories() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (ids: string[]) => categoriesApi.bulkDelete(ids), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-categories"] }) });
 }

@@ -75,6 +75,7 @@ export interface BirthdaySettings {
   enabled: boolean;
   category: string;
   leadTime: string;
+  leadTimes?: string[];
   lastRunAt?: string | null;
 }
 

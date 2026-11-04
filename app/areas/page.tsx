@@ -1,20 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
 import { toast } from "@/components/Toast";
 import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
-import { type AreaItem, type AreaPayload } from "@/api/areas";
+import { areasApi, type AreaItem, type AreaPayload } from "@/api/areas";
 import { geocodingApi } from "@/api/geocoding";
-import { useAreas, useCreateArea, useDeleteArea, useUpdateArea } from "@/hooks/useAreas";
+import { useAdminAreas, useBulkDeleteAreas, useCreateArea, useDeleteArea, useUpdateArea } from "@/hooks/useAreas";
 
 export default function AreasPage() {
-  const { data: areaList = [], isLoading: loading } = useAreas();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [selectedAreaIds, setSelectedAreaIds] = useState<string[]>([]);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
+  const { data: areaPage, isLoading: loading } = useAdminAreas({ page: currentPage, limit: pageSize, search: debouncedSearch.trim() || undefined });
+  const areaList = areaPage?.items ?? [];
   const createAreaMutation = useCreateArea();
   const updateAreaMutation = useUpdateArea();
   const deleteAreaMutation = useDeleteArea();
+  const bulkDeleteMutation = useBulkDeleteAreas();
   const saving = createAreaMutation.isPending || updateAreaMutation.isPending;
   const [isAddAreaOpen, setIsAddAreaOpen] = useState(false);
   const [editingArea, setEditingArea] = useState<AreaItem | null>(null);
@@ -36,6 +47,37 @@ export default function AreasPage() {
     Awaited<ReturnType<typeof geocodingApi.suggestions>>
   >([]);
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
+
+  const totalPages = areaPage?.meta.totalPages ?? 1;
+  const totalResults = areaPage?.meta.total ?? 0;
+  const allVisibleSelected = areaList.length > 0 && areaList.every((area) => selectedAreaIds.includes(area.id));
+  const toggleVisibleSelection = () => setSelectedAreaIds((current) => allVisibleSelected
+    ? current.filter((id) => !areaList.some((area) => area.id === id))
+    : Array.from(new Set([...current, ...areaList.map((area) => area.id)])));
+  const toggleAreaSelection = (id: string) => setSelectedAreaIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  async function selectAllFilteredAreas() {
+    try {
+      const result = await areasApi.adminIds({ search: debouncedSearch.trim() || undefined });
+      setSelectedAreaIds(result.ids);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Could not select filtered areas"), { title: "Selection failed" });
+    }
+  }
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedAreaIds([]);
+  }, [debouncedSearch, pageSize]);
+
+  async function runBulkDelete() {
+    if (!selectedAreaIds.length || !window.confirm(`Delete ${selectedAreaIds.length} selected areas?`)) return;
+    try {
+      await bulkDeleteMutation.mutateAsync(selectedAreaIds);
+      toast.success(`${selectedAreaIds.length} areas deleted`, { title: "Bulk delete complete" });
+      setSelectedAreaIds([]);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Bulk delete failed"), { title: "Bulk delete failed" });
+    }
+  }
 
   function showToast(message: string) {
     setToastMessage(message);
@@ -300,6 +342,21 @@ export default function AreasPage() {
           ))}
         </div>
 
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <label className="grid w-full max-w-xl gap-1">
+            <span className="text-xs font-medium text-slate-600">Search area, city or state</span>
+            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search areas..." className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-orange-400" />
+          </label>
+          {selectedAreaIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 p-2">
+              <span className="text-sm font-semibold text-orange-800">{selectedAreaIds.length} selected</span>
+              <button type="button" onClick={runBulkDelete} disabled={bulkDeleteMutation.isPending} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Delete</button>
+              <button type="button" onClick={() => setSelectedAreaIds([])} className="rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-semibold text-orange-800">Clear</button>
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={selectAllFilteredAreas} className="mt-3 text-left text-xs font-semibold text-orange-700 underline">Select all filtered areas</button>
+
         {loading ? (
           <div className="flex h-48 items-center justify-center text-sm text-slate-500">
             Loading areas from server...
@@ -318,10 +375,12 @@ export default function AreasPage() {
           <>
             {/* Mobile list */}
             <div className="mt-5 grid gap-3 md:hidden">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} /> Select current page</label>
               {areaList.map((area) => (
                 <article className="rounded-2xl border border-slate-200 bg-white p-4" key={area.id || area.slug}>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex items-start gap-2">
+                      <input type="checkbox" checked={selectedAreaIds.includes(area.id)} onChange={() => toggleAreaSelection(area.id)} aria-label={`Select ${area.name}`} />
                       <h2 className="truncate text-base font-semibold text-slate-900">{area.name}</h2>
                       <p className="mt-1 text-sm text-slate-500">
                         {area.city}, {area.state}
@@ -381,7 +440,8 @@ export default function AreasPage() {
 
             {/* Desktop table */}
             <div className="mt-5 hidden overflow-x-auto overflow-y-visible rounded-xl border border-slate-200 md:block">
-              <div className="grid grid-cols-[1.2fr_1fr_120px_120px_120px_90px] bg-slate-100 text-sm text-[#315576]">
+              <div className="grid grid-cols-[42px_1.2fr_1fr_120px_120px_120px_90px] bg-slate-100 text-sm text-[#315576]">
+                <div className="border-r border-slate-300 px-3 py-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Select current page" /></div>
                 {["Area", "Directory URL", "Merchants", "Coupons", "QR", "Actions"].map((h) => (
                   <div className="border-r border-slate-300 px-4 py-3 last:border-r-0" key={h}>
                     {h}
@@ -390,9 +450,10 @@ export default function AreasPage() {
               </div>
               {areaList.map((area) => (
                 <div
-                  className="grid grid-cols-[1.2fr_1fr_120px_120px_120px_90px] border-t border-dashed border-slate-200 text-sm"
+                  className="grid grid-cols-[42px_1.2fr_1fr_120px_120px_120px_90px] border-t border-dashed border-slate-200 text-sm"
                   key={area.id || area.slug}
                 >
+                  <div className="px-3 py-3"><input type="checkbox" checked={selectedAreaIds.includes(area.id)} onChange={() => toggleAreaSelection(area.id)} aria-label={`Select ${area.name}`} /></div>
                   <div className="px-4 py-3">
                     <strong>{area.name}</strong>
                     <p className="text-xs text-slate-500">
@@ -440,6 +501,19 @@ export default function AreasPage() {
               ))}
             </div>
           </>
+        )}
+
+        {!loading && totalResults > 0 && (
+          <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+            <span>Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalResults)} of {totalResults} areas</span>
+            <div className="flex items-center gap-2">
+              <label htmlFor="area-page-size">Rows per page</label>
+              <select id="area-page-size" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm">{[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}</select>
+              <button type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => page - 1)} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40">Previous</button>
+              <span>{currentPage} / {totalPages}</span>
+              <button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((page) => page + 1)} className="rounded-lg border border-slate-300 px-3 py-1.5 disabled:opacity-40">Next</button>
+            </div>
+          </div>
         )}
       </section>
 

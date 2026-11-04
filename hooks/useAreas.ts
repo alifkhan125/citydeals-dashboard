@@ -9,6 +9,14 @@ export function useAreas() {
   });
 }
 
+export function useAdminAreas(params: { page: number; limit: number; search?: string; city?: string; state?: string }) {
+  return useQuery({
+    queryKey: ["admin-areas", params],
+    queryFn: () => areasApi.adminList(params),
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useCreateArea() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -41,6 +49,14 @@ export function useDeleteArea() {
   return useMutation({
     mutationFn: areasApi.delete,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.areas.all }),
+  });
+}
+
+export function useBulkDeleteAreas() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => areasApi.bulkDelete(ids),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-areas"] }),
   });
 }
 

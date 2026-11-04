@@ -7,9 +7,11 @@ import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
 import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
-import { type Category, type CategoryPayload } from "@/api/categories";
+import { categoriesApi, type Category, type CategoryPayload } from "@/api/categories";
 import {
-  useCategories,
+  useAdminCategories,
+  useBulkCategoryStatus,
+  useBulkDeleteCategories,
   useCreateCategory,
   useDeleteCategory,
   useUpdateCategory,
@@ -18,15 +20,21 @@ import {
 const assetBase = "/assets/dashboard/";
 
 export default function CategoriesPage() {
-  const { data: categoryList = [], isLoading: loading } = useCategories();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  useEffect(() => { const timeout = window.setTimeout(() => setDebouncedSearch(searchQuery), 350); return () => window.clearTimeout(timeout); }, [searchQuery]);
+  const { data: categoryPage, isLoading: loading } = useAdminCategories({ page: currentPage, limit: pageSize, search: debouncedSearch.trim() || undefined, status: statusFilter === "ALL" ? undefined : statusFilter });
+  const categoryList = categoryPage?.items ?? [];
   const createCategoryMutation = useCreateCategory();
   const updateCategoryMutation = useUpdateCategory();
   const deleteCategoryMutation = useDeleteCategory();
+  const bulkStatusMutation = useBulkCategoryStatus();
+  const bulkDeleteMutation = useBulkDeleteCategories();
   const saving = createCategoryMutation.isPending || updateCategoryMutation.isPending;
-
-  // Filters & Search
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
 
   // Drawer / Modal states
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -234,21 +242,28 @@ export default function CategoriesPage() {
   }
 
   // Filtered categories
-  const filteredCategories = useMemo(() => {
-    return categoryList.filter((category) => {
-      const q = searchQuery.toLowerCase().trim();
-      const matchesSearch =
-        !q ||
-        category.name.toLowerCase().includes(q) ||
-        category.slug.toLowerCase().includes(q) ||
-        (category.description && category.description.toLowerCase().includes(q));
-
-      const matchesStatus =
-        statusFilter === "ALL" || category.status === statusFilter;
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [categoryList, searchQuery, statusFilter]);
+  const filteredCategories = categoryList;
+  const totalPages = categoryPage?.meta.totalPages ?? 1;
+  const totalResults = categoryPage?.meta.total ?? 0;
+  const allVisibleSelected = categoryList.length > 0 && categoryList.every((item) => selectedCategoryIds.includes(item.id));
+  const toggleVisibleSelection = () => setSelectedCategoryIds((current) => allVisibleSelected ? current.filter((id) => !categoryList.some((item) => item.id === id)) : Array.from(new Set([...current, ...categoryList.map((item) => item.id)])));
+  const toggleCategorySelection = (id: string) => setSelectedCategoryIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  useEffect(() => { setCurrentPage(1); setSelectedCategoryIds([]); }, [debouncedSearch, statusFilter, pageSize]);
+  async function selectAllFilteredCategories() {
+    try {
+      const result = await categoriesApi.adminIds({ search: debouncedSearch.trim() || undefined, status: statusFilter === "ALL" ? undefined : statusFilter });
+      setSelectedCategoryIds(result.ids);
+    } catch (error) { toast.error(getErrorMessage(error, "Could not select filtered categories"), { title: "Selection failed" }); }
+  }
+  async function runBulkStatus(status: "ACTIVE" | "INACTIVE") {
+    try { await bulkStatusMutation.mutateAsync({ ids: selectedCategoryIds, status }); toast.success(`${selectedCategoryIds.length} categories updated`, { title: "Bulk update complete" }); setSelectedCategoryIds([]); }
+    catch (error) { toast.error(getErrorMessage(error, "Bulk update failed"), { title: "Bulk update failed" }); }
+  }
+  async function runBulkDelete() {
+    if (!selectedCategoryIds.length || !window.confirm(`Delete ${selectedCategoryIds.length} selected categories?`)) return;
+    try { await bulkDeleteMutation.mutateAsync(selectedCategoryIds); toast.success(`${selectedCategoryIds.length} categories deleted`, { title: "Bulk delete complete" }); setSelectedCategoryIds([]); }
+    catch (error) { toast.error(getErrorMessage(error, "Bulk delete failed"), { title: "Bulk delete failed" }); }
+  }
 
   return (
     <div className="w-full p-4 sm:p-6 lg:p-8">
@@ -300,6 +315,10 @@ export default function CategoriesPage() {
             </select>
           </div>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={selectAllFilteredCategories} className="text-xs font-semibold text-orange-700 underline">Select all filtered categories</button>
+          {selectedCategoryIds.length > 0 && <><span className="text-sm font-semibold text-orange-800">{selectedCategoryIds.length} selected</span><button type="button" onClick={() => runBulkStatus("ACTIVE")} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white">Publish</button><button type="button" onClick={() => runBulkStatus("INACTIVE")} className="rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold text-white">Archive</button><button type="button" onClick={runBulkDelete} disabled={bulkDeleteMutation.isPending} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white">Delete</button><button type="button" onClick={() => setSelectedCategoryIds([])} className="rounded-lg border border-orange-300 px-3 py-2 text-xs font-semibold text-orange-800">Clear</button></>}
+        </div>
 
         {/* Content area */}
         {loading ? (
@@ -329,6 +348,7 @@ export default function CategoriesPage() {
           <>
             {/* Mobile Cards View */}
             <div className="mt-4 grid gap-3 lg:hidden">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-600"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} /> Select current page</label>
               {filteredCategories.map((category) => (
                 <article
                   className="relative rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -336,6 +356,7 @@ export default function CategoriesPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
+                      <input type="checkbox" checked={selectedCategoryIds.includes(category.id)} onChange={() => toggleCategorySelection(category.id)} aria-label={`Select ${category.name}`} />
                       <span className="relative size-11 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                         <Image
                           className="object-cover"
@@ -424,7 +445,8 @@ export default function CategoriesPage() {
 
             {/* Desktop Table View */}
             <div className="mt-4 hidden overflow-visible rounded-lg border border-slate-200 lg:block">
-              <div className="grid h-[55px] grid-cols-[minmax(220px,1.2fr)_minmax(220px,1.5fr)_130px_90px_110px_80px] items-center bg-slate-100 text-sm font-medium leading-5 text-[#315576]">
+              <div className="grid h-[55px] grid-cols-[42px_minmax(220px,1.2fr)_minmax(220px,1.5fr)_130px_90px_110px_80px] items-center bg-slate-100 text-sm font-medium leading-5 text-[#315576]">
+                <div className="border-r border-slate-300 px-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Select current page" /></div>
                 {[
                   "Category Name",
                   "Description",
@@ -441,9 +463,10 @@ export default function CategoriesPage() {
 
               {filteredCategories.map((category) => (
                 <div
-                  className="grid h-[56px] grid-cols-[minmax(220px,1.2fr)_minmax(220px,1.5fr)_130px_90px_110px_80px] items-center border-b border-dashed border-slate-200 bg-white last:border-b-0 hover:bg-slate-50/50 transition-colors"
+                  className="grid h-[56px] grid-cols-[42px_minmax(220px,1.2fr)_minmax(220px,1.5fr)_130px_90px_110px_80px] items-center border-b border-dashed border-slate-200 bg-white last:border-b-0 hover:bg-slate-50/50 transition-colors"
                   key={category.id || category.slug}
                 >
+                  <div className="px-3"><input type="checkbox" checked={selectedCategoryIds.includes(category.id)} onChange={() => toggleCategorySelection(category.id)} aria-label={`Select ${category.name}`} /></div>
                   {/* Name + Icon */}
                   <div className="flex min-w-0 items-center gap-3 px-3 py-2">
                     <span className="relative size-8 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-100">
@@ -537,6 +560,7 @@ export default function CategoriesPage() {
             </div>
           </>
         )}
+        {!loading && totalResults > 0 && <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between"><span>Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalResults)} of {totalResults} categories</span><div className="flex items-center gap-2"><label htmlFor="category-page-size">Rows per page</label><select id="category-page-size" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded-lg border border-slate-300 px-2 py-1.5">{[25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}</select><button type="button" disabled={currentPage <= 1} onClick={() => setCurrentPage((page) => page - 1)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Previous</button><span>{currentPage} / {totalPages}</span><button type="button" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((page) => page + 1)} className="rounded-lg border px-3 py-1.5 disabled:opacity-40">Next</button></div></div>}
       </section>
 
       {/* Add / Edit Category Modal */}
