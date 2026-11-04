@@ -64,6 +64,7 @@ export default function BusinessesPage() {
     status: selectedStatusFilter === "ALL" ? undefined : selectedStatusFilter,
   });
   const businessList = businessPage?.items ?? [];
+  const totalBusinesses = businessPage?.meta.total ?? businessList.length;
   const createBusinessMutation = useCreateBusiness();
   const updateBusinessMutation = useUpdateBusiness();
   const deleteBusinessMutation = useDeleteBusiness();
@@ -423,32 +424,34 @@ export default function BusinessesPage() {
   }
 
   return (
-    <div className="w-full p-4 sm:p-6 lg:p-8">
-      <section className="rounded-2xl border border-[#d1d5db] bg-white p-4 sm:p-5">
+    <div className="w-full px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:p-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="m-0 text-lg font-semibold leading-6 text-slate-900">
+            <h1 className="m-0 text-3xl font-semibold leading-9 tracking-tight text-slate-950">
               Businesses
             </h1>
             <p className="mt-1 text-sm leading-5 text-[#475569]">
-              Manage all your verified locations and merchant profiles ({businessList.length} total)
+              Manage all your verified locations and merchant profiles ({totalBusinesses.toLocaleString()} total)
             </p>
           </div>
+          <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           <button
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f97316] px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-95 sm:w-auto"
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#f97316] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 sm:flex-none"
             type="button"
             onClick={handleOpenAddBusiness}
           >
             <Image src={`${assetBase}imgAdd.svg`} alt="" width={20} height={20} />
             Add New Business
           </button>
-          <button type="button" onClick={() => setIsImportOpen(true)} className="h-11 rounded-xl border border-orange-300 px-4 py-2.5 text-sm font-semibold text-orange-700">Import CSV</button>
+          <button type="button" onClick={() => setIsImportOpen(true)} className="h-12 flex-1 rounded-xl border border-orange-300 bg-white px-5 text-sm font-semibold text-orange-700 transition hover:bg-orange-50 sm:flex-none">Import CSV</button>
+          </div>
         </div>
 
         {/* Search & Filter Bar */}
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative flex-1 max-w-md">
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+          <div className="relative w-full">
             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
               <Image src={`${assetBase}imgSearchNormal.svg`} alt="" width={18} height={18} />
             </span>
@@ -457,15 +460,15 @@ export default function BusinessesPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name, address, category, phone..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#f97316] focus:bg-white"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#f97316] focus:ring-2 focus:ring-orange-100"
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <select
               value={selectedAreaFilter}
               onChange={(e) => setSelectedAreaFilter(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
+              className="h-11 min-w-36 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:ring-2 focus:ring-orange-100 cursor-pointer"
             >
               <option value="ALL">All Areas</option>
               {areas.map((a) => (
@@ -478,7 +481,7 @@ export default function BusinessesPage() {
             <select
               value={selectedStatusFilter}
               onChange={(e) => setSelectedStatusFilter(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
+              className="h-11 min-w-36 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:ring-2 focus:ring-orange-100 cursor-pointer"
             >
               <option value="ALL">All Statuses</option>
               <option value="ACTIVE">Published</option>
@@ -488,7 +491,7 @@ export default function BusinessesPage() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:bg-white cursor-pointer"
+              className="h-11 min-w-36 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 outline-none transition focus:border-[#f97316] focus:ring-2 focus:ring-orange-100 cursor-pointer"
             >
               <option value="ALL">All Categories</option>
               {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -505,7 +508,7 @@ export default function BusinessesPage() {
             <button type="button" onClick={() => setSelectedBusinessIds([])} className="rounded-lg border border-orange-300 bg-white px-3 py-2 text-xs font-semibold text-orange-800">Clear</button>
           </div>
         )}
-        <button type="button" onClick={selectAllFilteredBusinesses} className="mt-3 text-left text-xs font-semibold text-orange-700 underline">Select all filtered businesses</button>
+        <button type="button" onClick={selectAllFilteredBusinesses} className="mt-4 text-left text-sm font-medium text-orange-700 underline underline-offset-2 hover:text-orange-800">Select all filtered businesses</button>
 
         {/* Content area */}
         {loading ? (

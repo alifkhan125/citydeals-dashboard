@@ -565,59 +565,61 @@ export default function CouponsPage() {
           }
         }
       `}</style>
-      <section className="w-full rounded-2xl border border-[#d1d5db] bg-white p-3 sm:p-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <section className="w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:p-6">
+        <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="m-0 text-2xl font-normal leading-8 text-slate-900 sm:text-base sm:leading-6">
+            <h1 className="m-0 text-3xl font-semibold leading-9 tracking-tight text-slate-950">
               Coupons
             </h1>
-            <p className="mt-1 line-clamp-2 text-sm leading-5 text-[#475569] sm:truncate">
+            <p className="mt-1 text-sm leading-5 text-slate-500">
               Manage all coupon offers, publishing status and redemption windows
             </p>
           </div>
+          <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
           <button
-            className="flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#f97316] px-4 py-3 text-base leading-6 text-white transition-opacity hover:opacity-95 sm:w-auto"
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#f97316] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600 sm:flex-none"
             type="button"
             onClick={handleOpenNewCoupon}
           >
             <Image src={`${assetBase}imgAdd.svg`} alt="" width={24} height={24} />
             New coupon
           </button>
-          <button type="button" onClick={() => setIsImportOpen(true)} className="h-12 rounded-xl border border-orange-300 px-4 py-3 text-sm font-semibold text-orange-700">Import CSV</button>
+          <button type="button" onClick={() => setIsImportOpen(true)} className="h-12 flex-1 rounded-xl border border-orange-300 bg-white px-5 text-sm font-semibold text-orange-700 transition hover:bg-orange-50 sm:flex-none">Import CSV</button>
+          </div>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
           {[
             { label: "Total opens / views", value: totalViews.toLocaleString() },
             { label: "Total likes", value: totalLikes.toLocaleString() },
             { label: "Total redemptions", value: totalRedemptions.toLocaleString() },
           ].map((item) => (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4" key={item.label}>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5" key={item.label}>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 {item.label}
               </p>
-              <strong className="mt-1 block text-2xl font-semibold text-slate-900">
+              <strong className="mt-2 block text-3xl font-bold tracking-tight text-slate-950">
                 {item.value}
               </strong>
             </div>
           ))}
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <label className="grid min-w-0 gap-1 lg:col-span-2">
-              <span className="text-xs font-medium text-slate-600">Search</span>
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+          <label className="grid w-full min-w-0 gap-1.5">
+              <span className="text-xs font-semibold text-slate-600">Search</span>
               <input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search title, description, code or business..."
-                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-orange-400"
+                className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
               />
-            </label>
+          </label>
+          <div className="mt-4 grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <label className="grid min-w-0 gap-1">
-              <span className="text-xs font-medium text-slate-600">Merchant</span>
+              <span className="text-xs font-semibold text-slate-600">Merchant</span>
               <select
-                className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-orange-400 sm:min-w-48"
+                 className="h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                 value={merchantFilter}
                 onChange={(event) => setMerchantFilter(event.target.value)}
               >
@@ -629,9 +631,9 @@ export default function CouponsPage() {
               </select>
             </label>
             <label className="grid min-w-0 gap-1">
-              <span className="text-xs font-medium text-slate-600">Status</span>
+              <span className="text-xs font-semibold text-slate-600">Status</span>
               <select
-                className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-orange-400 sm:min-w-40"
+                 className="h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-800 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
               >
@@ -643,22 +645,22 @@ export default function CouponsPage() {
               </select>
             </label>
             <label className="grid min-w-0 gap-1">
-              <span className="text-xs font-medium text-slate-600">Area</span>
-              <select className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+              <span className="text-xs font-semibold text-slate-600">Area</span>
+              <select className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
                 <option value="ALL">All areas</option>
                 {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
               </select>
             </label>
             <label className="grid min-w-0 gap-1">
-              <span className="text-xs font-medium text-slate-600">Category</span>
-              <select className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <span className="text-xs font-semibold text-slate-600">Category</span>
+              <select className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
                 <option value="ALL">All categories</option>
                 {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
               </select>
             </label>
             <label className="grid min-w-0 gap-1">
-              <span className="text-xs font-medium text-slate-600">Audience</span>
-              <select className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm" value={audienceFilter} onChange={(event) => setAudienceFilter(event.target.value)}>
+              <span className="text-xs font-semibold text-slate-600">Audience</span>
+              <select className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={audienceFilter} onChange={(event) => setAudienceFilter(event.target.value)}>
                 <option value="ALL">All audiences</option>
                 <option value="ALL_USERS">All users</option>
                 <option value="BIRTHDAY_USERS_ONLY">Birthday users only</option>
@@ -666,10 +668,10 @@ export default function CouponsPage() {
               </select>
             </label>
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+          <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-3">
             {(["CSV", "PDF"] as const).map((format) => (
               <button
-                className="h-10 min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium leading-none text-slate-700 hover:bg-slate-100 sm:px-3 sm:text-sm"
+                 className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium leading-none text-slate-700 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
                 key={format}
                 type="button"
                 onClick={() => handleExport(format)}
