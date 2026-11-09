@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
+import ConfirmationModal from "@/components/ConfirmationModal";
 import { toast } from "@/components/Toast";
 import OpenStreetMapPreview from "@/components/OpenStreetMapPreview";
 import { areasApi, type AreaItem, type AreaPayload } from "@/api/areas";
@@ -33,6 +34,7 @@ export default function AreasPage() {
   const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [areaToDelete, setAreaToDelete] = useState<AreaItem | null>(null);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
   // Form states (clean and simple: name, slug, city, state)
   const [areaName, setAreaName] = useState("");
@@ -69,11 +71,16 @@ export default function AreasPage() {
   }, [debouncedSearch, pageSize]);
 
   async function runBulkDelete() {
-    if (!selectedAreaIds.length || !window.confirm(`Delete ${selectedAreaIds.length} selected areas?`)) return;
+    if (!selectedAreaIds.length) return;
+    setShowBulkDeleteModal(true);
+  }
+
+  async function confirmBulkDelete() {
     try {
       await bulkDeleteMutation.mutateAsync(selectedAreaIds);
       toast.success(`${selectedAreaIds.length} areas deleted`, { title: "Bulk delete complete" });
       setSelectedAreaIds([]);
+      setShowBulkDeleteModal(false);
     } catch (error) {
       toast.error(getErrorMessage(error, "Bulk delete failed"), { title: "Bulk delete failed" });
     }
@@ -693,6 +700,7 @@ export default function AreasPage() {
         </form>
       </Modal>
       <DeleteWarningModal isOpen={Boolean(areaToDelete)} itemName={areaToDelete?.name} entityLabel="area" pending={deleteAreaMutation.isPending} onClose={() => setAreaToDelete(null)} onConfirm={confirmDeleteArea} />
+      <ConfirmationModal isOpen={showBulkDeleteModal} title={`Delete ${selectedAreaIds.length} areas?`} message="These areas and their associated records will be removed. This action cannot be undone." confirmLabel="Delete areas" danger pending={bulkDeleteMutation.isPending} onClose={() => setShowBulkDeleteModal(false)} onConfirm={confirmBulkDelete} />
 
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-medium text-white shadow-xl">

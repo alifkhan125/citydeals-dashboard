@@ -2,8 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "./Toast";
+import ConfirmationModal from "./ConfirmationModal";
 
 const assetBase = "/assets/dashboard/";
 
@@ -114,6 +116,8 @@ export default function Sidebar({
   className = "",
 }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
   const { can, isLoading } = usePermissions();
 
   const isItemActive = (item: { label: string; href: string }) => {
@@ -192,18 +196,10 @@ export default function Sidebar({
       </nav>
 
       <div className="border-t border-black/10 p-4">
-        <Link
-          href="/"
+        <button
+          type="button"
           className="flex min-h-14 items-center gap-3 rounded-lg p-2 text-[#475569] no-underline hover:bg-slate-50"
-          onClick={() => {
-            if (typeof window !== "undefined") {
-              localStorage.removeItem("dashboard_access_token");
-              localStorage.removeItem("dashboard_refresh_token");
-              localStorage.removeItem("dashboard_user");
-            }
-            toast.info("You have been signed out.", { title: "Signed Out" });
-            if (onNavigate) onNavigate();
-          }}
+          onClick={() => setShowLogoutModal(true)}
         >
           <span className="grid size-10 place-items-center rounded-lg bg-slate-50">
             <Image
@@ -221,8 +217,23 @@ export default function Sidebar({
               Exit admin panel
             </small>
           </span>
-        </Link>
+        </button>
       </div>
+      <ConfirmationModal
+        isOpen={showLogoutModal}
+        title="Log out of CityDeals?"
+        message="You will be signed out of this admin panel and returned to the login screen."
+        confirmLabel="Log out"
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={() => {
+          localStorage.removeItem("dashboard_access_token");
+          localStorage.removeItem("dashboard_refresh_token");
+          localStorage.removeItem("dashboard_user");
+          toast.info("You have been signed out.", { title: "Signed Out" });
+          onNavigate?.();
+          router.push("/");
+        }}
+      />
     </aside>
   );
 }

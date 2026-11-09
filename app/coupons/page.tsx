@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
+import ConfirmationModal from "@/components/ConfirmationModal";
 import CsvImportModal from "@/components/CsvImportModal";
 import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
@@ -78,6 +79,7 @@ export default function CouponsPage() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
   // Form states
   const [offer, setOffer] = useState("");
@@ -534,11 +536,16 @@ export default function CouponsPage() {
   }
 
   async function runBulkDelete() {
-    if (selectedCouponIds.length === 0 || !window.confirm(`Delete ${selectedCouponIds.length} selected coupons?`)) return;
+    if (selectedCouponIds.length === 0) return;
+    setShowBulkDeleteModal(true);
+  }
+
+  async function confirmBulkDelete() {
     try {
       await bulkDeleteMutation.mutateAsync(selectedCouponIds);
       toast.success(`${selectedCouponIds.length} coupons deleted`, { title: "Bulk delete complete" });
       setSelectedCouponIds([]);
+      setShowBulkDeleteModal(false);
     } catch (error) {
       toast.error(getErrorMessage(error, "Bulk delete failed"), { title: "Bulk delete failed" });
     }
@@ -1245,6 +1252,7 @@ export default function CouponsPage() {
         onClose={() => setCouponToDelete(null)}
         onConfirm={confirmDeleteCoupon}
       />
+      <ConfirmationModal isOpen={showBulkDeleteModal} title={`Delete ${selectedCouponIds.length} coupons?`} message="These coupons and their redemption history will be removed. This action cannot be undone." confirmLabel="Delete coupons" danger pending={bulkDeleteMutation.isPending} onClose={() => setShowBulkDeleteModal(false)} onConfirm={confirmBulkDelete} />
 
       <CsvImportModal
         isOpen={isImportOpen}
