@@ -38,6 +38,7 @@ export function useCreateBusiness() {
     mutationFn: businessesApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.businesses.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-businesses"] });
     },
   });
 }
@@ -49,6 +50,7 @@ export function useUpdateBusiness() {
     mutationFn: businessesApi.update,
     onMutate: async ({ id, payload }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.businesses.all });
+      await queryClient.cancelQueries({ queryKey: ["admin-businesses"] });
       const previous = queryClient.getQueryData<BusinessItem[]>(queryKeys.businesses.all);
 
       queryClient.setQueryData<BusinessItem[]>(queryKeys.businesses.all, (old) => {
@@ -65,6 +67,7 @@ export function useUpdateBusiness() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.businesses.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-businesses"] });
     },
   });
 }
@@ -76,6 +79,7 @@ export function useDeleteBusiness() {
     mutationFn: businessesApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.businesses.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-businesses"] });
     },
   });
 }
@@ -84,7 +88,10 @@ export function useBulkBusinessStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ ids, status }: { ids: string[]; status: BusinessItem["status"] }) => businessesApi.bulkStatus(ids, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-businesses"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.businesses.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-businesses"] });
+    },
   });
 }
 
@@ -92,6 +99,9 @@ export function useBulkDeleteBusinesses() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => businessesApi.bulkDelete(ids),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-businesses"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.businesses.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-businesses"] });
+    },
   });
 }

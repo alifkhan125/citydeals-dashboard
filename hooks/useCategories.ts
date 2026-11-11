@@ -20,6 +20,7 @@ export function useCreateCategory() {
     mutationFn: categoriesApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
     },
   });
 }
@@ -31,6 +32,7 @@ export function useUpdateCategory() {
     mutationFn: categoriesApi.update,
     onMutate: async ({ id, payload }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.categories.all });
+      await queryClient.cancelQueries({ queryKey: ["admin-categories"] });
       const previous = queryClient.getQueryData<Category[]>(queryKeys.categories.all);
 
       queryClient.setQueryData<Category[]>(queryKeys.categories.all, (old) => {
@@ -47,6 +49,7 @@ export function useUpdateCategory() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
     },
   });
 }
@@ -58,16 +61,29 @@ export function useDeleteCategory() {
     mutationFn: categoriesApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
     },
   });
 }
 
 export function useBulkCategoryStatus() {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: ({ ids, status }: { ids: string[]; status: Category["status"] }) => categoriesApi.bulkStatus(ids, status), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-categories"] }) });
+  return useMutation({
+    mutationFn: ({ ids, status }: { ids: string[]; status: Category["status"] }) => categoriesApi.bulkStatus(ids, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
+    },
+  });
 }
 
 export function useBulkDeleteCategories() {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (ids: string[]) => categoriesApi.bulkDelete(ids), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-categories"] }) });
+  return useMutation({
+    mutationFn: (ids: string[]) => categoriesApi.bulkDelete(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-categories"] });
+    },
+  });
 }

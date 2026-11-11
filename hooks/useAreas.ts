@@ -21,7 +21,10 @@ export function useCreateArea() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: areasApi.create,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.areas.all }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.areas.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-areas"] });
+    },
   });
 }
 
@@ -31,6 +34,7 @@ export function useUpdateArea() {
     mutationFn: areasApi.update,
     onMutate: async ({ id, payload }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.areas.all });
+      await queryClient.cancelQueries({ queryKey: ["admin-areas"] });
       const previous = queryClient.getQueryData<AreaItem[]>(queryKeys.areas.all);
       queryClient.setQueryData<AreaItem[]>(queryKeys.areas.all, (old) =>
         old ? old.map((area) => (area.id === id ? { ...area, ...payload } : area)) : [],
@@ -40,7 +44,10 @@ export function useUpdateArea() {
     onError: (_error, _variables, context) => {
       if (context?.previous) queryClient.setQueryData(queryKeys.areas.all, context.previous);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.areas.all }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.areas.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-areas"] });
+    },
   });
 }
 
@@ -48,7 +55,10 @@ export function useDeleteArea() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: areasApi.delete,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.areas.all }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.areas.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-areas"] });
+    },
   });
 }
 
@@ -56,7 +66,10 @@ export function useBulkDeleteAreas() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => areasApi.bulkDelete(ids),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-areas"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.areas.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-areas"] });
+    },
   });
 }
 
@@ -64,7 +77,10 @@ export function useRegenerateAreaQr() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: areasApi.regenerateQr,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.areas.all }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.areas.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-areas"] });
+    },
   });
 }
 
@@ -72,6 +88,9 @@ export function useRegenerateAllAreaQr() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: areasApi.regenerateAllQr,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.areas.all }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.areas.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-areas"] });
+    },
   });
 }
