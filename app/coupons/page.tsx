@@ -197,7 +197,7 @@ export default function CouponsPage() {
     setOffer(coupon.title);
     setBusiness(coupon.merchantId || coupon.merchant?.id || "");
     setCategory(coupon.categoryId || coupon.category?.id || "");
-    setCouponCode(coupon.couponCode || "");
+    setCouponCode(coupon.couponCode ? coupon.couponCode.toUpperCase().slice(0, 10) : "");
     setRedemptionLimit(coupon.redemptionLimit ? String(coupon.redemptionLimit) : "");
     setExpires(coupon.expiresAt ? new Date(coupon.expiresAt).toISOString().slice(0, 10) : "");
 
@@ -425,6 +425,17 @@ export default function CouponsPage() {
       return;
     }
 
+    const trimmedCode = couponCode.trim().toUpperCase();
+    if (!trimmedCode) {
+      showToast("Coupon Code is required (6 to 10 characters)");
+      return;
+    }
+
+    if (trimmedCode.length < 6 || trimmedCode.length > 10) {
+      showToast("Coupon Code must be between 6 and 10 characters");
+      return;
+    }
+
     // React state updates are asynchronous; use an immediate ref guard so a
     // rapid double-click cannot create two identical coupons.
     saveInFlightRef.current = true;
@@ -455,7 +466,7 @@ export default function CouponsPage() {
         merchantId: business,
         categoryId: category || undefined,
         imageUrl: uploadedImageUrl || undefined,
-        couponCode: couponCode.trim() || undefined,
+        couponCode: trimmedCode,
         redemptionLimit: redemptionLimit ? parseInt(redemptionLimit, 10) : undefined,
         redemptionFrequency: freqMap[frequency] || "ONE_TIME",
         discussion: discussion.trim() || undefined,
@@ -1094,7 +1105,7 @@ export default function CouponsPage() {
               </label>
             </div>
 
-            {/* Row 2: Categories & Coupon Code / link */}
+            {/* Row 2: Categories & Coupon Code */}
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <label className="grid gap-1">
                 <span className="text-xs font-semibold text-slate-800">Category</span>
@@ -1120,12 +1131,23 @@ export default function CouponsPage() {
               </label>
 
               <label className="grid gap-1">
-                <span className="text-xs font-semibold text-slate-800">Coupon Code / link</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-800">Coupon Code *</span>
+                  <span className={`text-[11px] font-medium ${couponCode.length > 0 && couponCode.length < 6 ? "text-amber-600" : "text-slate-400"}`}>
+                    {couponCode.length > 0 && couponCode.length < 6 ? `Min 6 (${couponCode.length}/10)` : `${couponCode.length}/10`}
+                  </span>
+                </div>
                 <input
+                  required
                   value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value)}
-                  placeholder="e.g. SAVE20"
-                  className="h-10 w-full rounded-xl border border-slate-200/70 bg-[#f8fafc] px-3.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none transition-colors focus:border-slate-400 focus:bg-white"
+                  onChange={(e) => {
+                    const formatted = e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 10);
+                    setCouponCode(formatted);
+                  }}
+                  placeholder="e.g. PIZZA20"
+                  minLength={6}
+                  maxLength={10}
+                  className="h-10 w-full rounded-xl border border-slate-200/70 bg-[#f8fafc] px-3.5 font-mono text-sm uppercase tracking-wider text-slate-800 placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-400 outline-none transition-colors focus:border-slate-400 focus:bg-white"
                 />
               </label>
             </div>
