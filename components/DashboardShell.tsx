@@ -19,8 +19,16 @@ export default function DashboardShell({
     hydrateFromStorage();
   }, [hydrateFromStorage]);
 
-  // If on root sign-in page, render clean without dashboard layout
-  if (pathname === "/" || pathname === "/signin") {
+  // Public pages render without admin dashboard shell
+  const isPublicPage =
+    pathname === "/" ||
+    pathname === "/signin" ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
+    pathname === "/delete-account" ||
+    pathname.startsWith("/c/");
+
+  if (isPublicPage) {
     return <>{children}</>;
   }
 
