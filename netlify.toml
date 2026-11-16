@@ -7,6 +7,6 @@
 
 [[redirects]]
   from = "/citydeals-api/*"
-  to = "http://16.178.137.42/citydeals/api/:splat"
+  to = "https://playappllc.com/citydeals/api/:splat"
   status = 200
   force = true

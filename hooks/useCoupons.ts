@@ -55,6 +55,7 @@ export function useCreateCoupon() {
     mutationFn: couponsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.coupons.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
     },
   });
 }
@@ -66,6 +67,7 @@ export function useUpdateCoupon() {
     mutationFn: couponsApi.update,
     onMutate: async ({ id, payload }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.coupons.all });
+      await queryClient.cancelQueries({ queryKey: ["admin-coupons"] });
       const previous = queryClient.getQueryData<CouponItem[]>(queryKeys.coupons.all);
 
       queryClient.setQueryData<CouponItem[]>(queryKeys.coupons.all, (old) => {
@@ -82,6 +84,7 @@ export function useUpdateCoupon() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.coupons.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
     },
   });
 }
@@ -93,6 +96,7 @@ export function useDeleteCoupon() {
     mutationFn: couponsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.coupons.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
     },
   });
 }
@@ -101,7 +105,10 @@ export function useBulkCouponStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ ids, status }: { ids: string[]; status: CouponItem["status"] }) => couponsApi.bulkStatus(ids, status),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.coupons.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+    },
   });
 }
 
@@ -109,7 +116,10 @@ export function useBulkDeleteCoupons() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (ids: string[]) => couponsApi.bulkDelete(ids),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.coupons.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+    },
   });
 }
 
@@ -117,7 +127,10 @@ export function useDuplicateCoupon() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => couponsApi.duplicate(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-coupons"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.coupons.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+    },
   });
 }
 

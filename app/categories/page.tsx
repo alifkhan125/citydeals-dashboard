@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
+import ConfirmationModal from "@/components/ConfirmationModal";
 import { toast } from "@/components/Toast";
 import { uploadImage } from "@/api/upload";
 import { categoriesApi, type Category, type CategoryPayload } from "@/api/categories";
@@ -43,6 +44,7 @@ export default function CategoriesPage() {
   const [actionMenuPosition, setActionMenuPosition] = useState({ top: 0, left: 0 });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
 
   // Form states
   const [iconFile, setIconFile] = useState<File | null>(null);
@@ -260,9 +262,14 @@ export default function CategoriesPage() {
     catch (error) { toast.error(getErrorMessage(error, "Bulk update failed"), { title: "Bulk update failed" }); }
   }
   async function runBulkDelete() {
-    if (!selectedCategoryIds.length || !window.confirm(`Delete ${selectedCategoryIds.length} selected categories?`)) return;
+    if (!selectedCategoryIds.length) return;
+    setShowBulkDeleteModal(true);
+  }
+
+  async function confirmBulkDelete() {
     try { await bulkDeleteMutation.mutateAsync(selectedCategoryIds); toast.success(`${selectedCategoryIds.length} categories deleted`, { title: "Bulk delete complete" }); setSelectedCategoryIds([]); }
     catch (error) { toast.error(getErrorMessage(error, "Bulk delete failed"), { title: "Bulk delete failed" }); }
+    finally { setShowBulkDeleteModal(false); }
   }
 
   return (
@@ -733,6 +740,7 @@ export default function CategoriesPage() {
         </form>
       </Modal>
       <DeleteWarningModal isOpen={Boolean(categoryToDelete)} itemName={categoryToDelete?.name} entityLabel="category" pending={deleteCategoryMutation.isPending} onClose={() => setCategoryToDelete(null)} onConfirm={confirmDeleteCategory} />
+      <ConfirmationModal isOpen={showBulkDeleteModal} title={`Delete ${selectedCategoryIds.length} categories?`} message="These categories and their associated records will be removed. This action cannot be undone." confirmLabel="Delete categories" danger pending={bulkDeleteMutation.isPending} onClose={() => setShowBulkDeleteModal(false)} onConfirm={confirmBulkDelete} />
 
       {/* Floating Toast Notice */}
       {toastMessage && (

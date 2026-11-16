@@ -33,6 +33,7 @@ export function useUpdateGeofence() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.geofences.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.businesses.all });
+      queryClient.invalidateQueries({ queryKey: ["admin-businesses"] });
     },
   });
 }
