@@ -123,4 +123,6 @@ export const couponsApi = {
   importCsv: async (csv: string): Promise<{ imported: number; failed: number; errors?: Array<{ row: number; message: string }> }> => (apiClient.post("/coupons/admin/import", { csv }) as any),
   notifyNearby: (id: string) => apiClient.post<{ sent: number; message: string }>(`/coupons/${id}/notify-nearby`),
   report: (id: string) => apiClient.get<unknown, CouponReport>(`/admin/coupons/${id}/report`),
+  getOrder: (): Promise<string[]> => apiClient.get("/coupons/admin/order"),
+  updateOrder: (couponIds: string[]) => apiClient.post("/coupons/admin/order", { couponIds }),
 };
