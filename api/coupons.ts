@@ -4,6 +4,7 @@ export interface CouponItem {
   id: string;
   title: string;
   description: string;
+  shareSlug?: string | null;
   imageUrl?: string | null;
   couponCode?: string | null;
   couponLink?: string | null;

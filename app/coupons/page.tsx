@@ -129,6 +129,32 @@ export default function CouponsPage() {
     }
   }
 
+  async function handleDownloadCouponQr(coupon: CouponItem) {
+    try {
+      setOpenActionId(null);
+      const shareTarget = coupon.shareSlug || coupon.id;
+      const targetUrl = `https://citydeals.ai/c/${shareTarget}/open`;
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&margin=20&data=${encodeURIComponent(targetUrl)}`;
+
+      const response = await fetch(qrImageUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      const safeMerchant = (coupon.merchant?.name || "Merchant").replace(/[^a-zA-Z0-9]/g, "-");
+      const safeTitle = coupon.title.slice(0, 25).replace(/[^a-zA-Z0-9]/g, "-");
+      link.download = `QR-${safeMerchant}-${safeTitle}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success("Printable QR code downloaded", { title: "QR Ready" });
+    } catch (error) {
+      console.error("Failed to download QR code:", error);
+      toast.error(getErrorMessage(error, "Could not download QR code"), { title: "QR Download Failed" });
+    }
+  }
+
   function getErrorMessage(error: unknown, fallback: string) {
     if (error instanceof AxiosError) {
       const message = error.response?.data?.message;
@@ -426,13 +452,8 @@ export default function CouponsPage() {
     }
 
     const trimmedCode = couponCode.trim().toUpperCase();
-    if (!trimmedCode) {
-      showToast("Coupon Code is required (6 to 10 characters)");
-      return;
-    }
-
-    if (trimmedCode.length < 6 || trimmedCode.length > 10) {
-      showToast("Coupon Code must be between 6 and 10 characters");
+    if (trimmedCode && (trimmedCode.length < 3 || trimmedCode.length > 15)) {
+      showToast("Coupon Code must be between 3 and 15 characters if provided");
       return;
     }
 
@@ -466,7 +487,7 @@ export default function CouponsPage() {
         merchantId: business,
         categoryId: category || undefined,
         imageUrl: uploadedImageUrl || undefined,
-        couponCode: trimmedCode,
+        couponCode: trimmedCode || undefined,
         redemptionLimit: redemptionLimit ? parseInt(redemptionLimit, 10) : undefined,
         redemptionFrequency: freqMap[frequency] || "ONE_TIME",
         discussion: discussion.trim() || undefined,
@@ -789,6 +810,13 @@ export default function CouponsPage() {
                             {reportExportingId === coupon.id ? "Preparing PDF..." : "Export full PDF"}
                           </button>
                           <button
+                            className="block w-full px-3.5 py-2 text-left font-medium text-emerald-700 hover:bg-emerald-50"
+                            type="button"
+                            onClick={() => handleDownloadCouponQr(coupon)}
+                          >
+                            Download QR Code
+                          </button>
+                          <button
                             className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
                             type="button"
                             onClick={() => handleToggleStatus(coupon)}
@@ -978,6 +1006,13 @@ export default function CouponsPage() {
                             {reportExportingId === coupon.id ? "Preparing PDF..." : "Export full PDF"}
                           </button>
                           <button
+                            className="block w-full px-3.5 py-2 text-left font-medium text-emerald-700 hover:bg-emerald-50"
+                            type="button"
+                            onClick={() => handleDownloadCouponQr(coupon)}
+                          >
+                            Download QR Code
+                          </button>
+                          <button
                             className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
                             type="button"
                             onClick={() => handleToggleStatus(coupon)}
@@ -1132,20 +1167,18 @@ export default function CouponsPage() {
 
               <label className="grid gap-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-800">Coupon Code *</span>
-                  <span className={`text-[11px] font-medium ${couponCode.length > 0 && couponCode.length < 6 ? "text-amber-600" : "text-slate-400"}`}>
-                    {couponCode.length > 0 && couponCode.length < 6 ? `Min 6 (${couponCode.length}/10)` : `${couponCode.length}/10`}
+                  <span className="text-xs font-semibold text-slate-800">Coupon Code (Optional)</span>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    {couponCode.length > 0 ? `${couponCode.length}/10` : "Optional"}
                   </span>
                 </div>
                 <input
-                  required
                   value={couponCode}
                   onChange={(e) => {
                     const formatted = e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 10);
                     setCouponCode(formatted);
                   }}
-                  placeholder="e.g. PIZZA20"
-                  minLength={6}
+                  placeholder="e.g. PIZZA20 (Optional)"
                   maxLength={10}
                   className="h-10 w-full rounded-xl border border-slate-200/70 bg-[#f8fafc] px-3.5 font-mono text-sm uppercase tracking-wider text-slate-800 placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-400 outline-none transition-colors focus:border-slate-400 focus:bg-white"
                 />
