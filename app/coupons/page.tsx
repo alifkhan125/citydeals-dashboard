@@ -84,6 +84,7 @@ export default function CouponsPage() {
   const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [pinningId, setPinningId] = useState<string | null>(null);
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [reorderedCoupons, setReorderedCoupons] = useState<CouponItem[]>([]);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
@@ -332,6 +333,31 @@ export default function CouponsPage() {
       toast.error(getErrorMessage(error, "Failed to update coupon status"), {
         title: "Status Update Failed",
       });
+    }
+  }
+
+  async function handleTogglePin(coupon: CouponItem) {
+    setOpenActionId(null);
+    if (pinningId) return;
+    const nextPinState = !coupon.isPinned;
+    setPinningId(coupon.id);
+    try {
+      await couponsApi.togglePin(coupon.id, nextPinState);
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+      queryClient.invalidateQueries({ queryKey: ["coupons"] });
+      toast.success(
+        nextPinState
+          ? `Pinned "${coupon.title}" to top of App feed`
+          : `Unpinned "${coupon.title}"`,
+        { title: nextPinState ? "Post Pinned" : "Post Unpinned" },
+      );
+    } catch (error) {
+      console.error("Failed to toggle pin state:", error);
+      toast.error(getErrorMessage(error, "Failed to update pin state"), {
+        title: "Pin Update Failed",
+      });
+    } finally {
+      setPinningId(null);
     }
   }
 
@@ -862,7 +888,20 @@ export default function CouponsPage() {
                         </small>
                       </span>
                     </div>
-                    <div className="relative shrink-0">
+                    <div className="relative flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        title={coupon.isPinned ? "Unpin post from top" : "Pin post to top of mobile feed"}
+                        disabled={pinningId === coupon.id}
+                        className={`grid size-9 place-items-center rounded-lg border text-sm transition-all ${
+                          coupon.isPinned
+                            ? "border-amber-400 bg-amber-50 text-amber-900 ring-2 ring-amber-300/60"
+                            : "border-slate-300 bg-white text-slate-400 hover:border-amber-300 hover:text-amber-700"
+                        }`}
+                        onClick={() => handleTogglePin(coupon)}
+                      >
+                        📌
+                      </button>
                       <button
                         type="button"
                         aria-expanded={openActionId === coupon.id}
@@ -873,7 +912,23 @@ export default function CouponsPage() {
                         ⋮
                       </button>
                       {openActionId === coupon.id && (
-                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                        <div className="fixed z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                          <button
+                            className={`block w-full px-3.5 py-2 text-left font-semibold border-b border-slate-100 transition ${
+                              coupon.isPinned
+                                ? "text-amber-900 bg-amber-50 hover:bg-amber-100"
+                                : "text-amber-700 hover:bg-amber-50"
+                            }`}
+                            type="button"
+                            disabled={pinningId === coupon.id}
+                            onClick={() => handleTogglePin(coupon)}
+                          >
+                            {pinningId === coupon.id
+                              ? "Updating..."
+                              : coupon.isPinned
+                              ? "📌 Unpin Post"
+                              : "📌 Pin to Top"}
+                          </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -923,7 +978,12 @@ export default function CouponsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {coupon.isPinned && (
+                      <span className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-100 px-2.5 text-xs font-semibold text-amber-900 border border-amber-300 shadow-2xs">
+                        📌 Pinned to Top
+                      </span>
+                    )}
                     <span className="inline-flex h-6 items-center rounded bg-[#ffedd5] px-2.5 text-xs font-medium text-[#f97316]">
                       {coupon.category?.name || "General"}
                     </span>
@@ -975,9 +1035,9 @@ export default function CouponsPage() {
             </div>
 
             <div className="coupons-desktop-table mt-4 overflow-x-auto overflow-y-visible rounded-lg border border-slate-200">
-              <div className="min-w-[1120px]">
+              <div className="min-w-[1150px]">
                 {/* Table Header */}
-                <div className="grid h-[55px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
+                <div className="grid h-[55px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_130px_80px_80px_100px_110px_90px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
                   <div className="border-r border-slate-300 px-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Select current page" /></div>
                   <div className="border-r border-slate-300 px-4">Offer</div>
                   <div className="border-r border-slate-300 px-4">Business</div>
@@ -993,7 +1053,7 @@ export default function CouponsPage() {
                 {/* Table Body */}
                 {paginatedCoupons.map((coupon) => (
                   <div
-                    className="grid h-[60px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
+                    className="grid h-[60px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_130px_80px_80px_100px_110px_90px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
                     key={coupon.id}
                   >
                     <div className="px-3"><input type="checkbox" checked={selectedCouponIds.includes(coupon.id)} onChange={() => toggleCouponSelection(coupon.id)} aria-label={`Select ${coupon.title}`} /></div>
@@ -1010,10 +1070,26 @@ export default function CouponsPage() {
                           unoptimized={!!coupon.imageUrl}
                         />
                       </span>
-                      <strong className="block truncate text-sm font-normal leading-5 text-slate-900">
-                        {coupon.title}
-                      </strong>
-                      {coupon.audience && coupon.audience !== "ALL_USERS" && <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">{coupon.audience === "BIRTHDAY_USERS_ONLY" ? "Freebie! only" : "Freebie! + All"}</span>}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <strong className="block truncate text-sm font-normal leading-5 text-slate-900">
+                            {coupon.title}
+                          </strong>
+                          {coupon.isPinned && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-300 shadow-2xs shrink-0"
+                              title="Pinned to top of mobile feed"
+                            >
+                              📌 Pinned
+                            </span>
+                          )}
+                        </div>
+                        {coupon.audience && coupon.audience !== "ALL_USERS" && (
+                          <span className="mt-0.5 inline-block rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+                            {coupon.audience === "BIRTHDAY_USERS_ONLY" ? "Freebie! only" : "Freebie! + All"}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Business column */}
@@ -1058,18 +1134,47 @@ export default function CouponsPage() {
                     </div>
 
                     {/* Actions column */}
-                    <div className="relative flex justify-center px-4">
+                    <div className="relative flex items-center justify-center gap-1 px-2">
+                      <button
+                        type="button"
+                        title={coupon.isPinned ? "Unpin post from top" : "Pin post to top of mobile feed"}
+                        disabled={pinningId === coupon.id}
+                        className={`grid size-8 place-items-center rounded-lg border text-xs transition-all ${
+                          coupon.isPinned
+                            ? "border-amber-400 bg-amber-50 text-amber-900 ring-2 ring-amber-300/60 hover:bg-amber-100"
+                            : "border-slate-300 bg-white text-slate-400 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50"
+                        }`}
+                        onClick={() => handleTogglePin(coupon)}
+                      >
+                        📌
+                      </button>
                       <button
                         type="button"
                         aria-expanded={openActionId === coupon.id}
                         aria-label={`Open actions for ${coupon.title}`}
-                        className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
+                        className="grid size-8 place-items-center rounded-lg border border-slate-300 bg-white text-base font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                         onClick={(event) => toggleActionMenu(event, coupon.id)}
                       >
                         ⋮
                       </button>
                       {openActionId === coupon.id && (
-                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                        <div className="fixed z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                          <button
+                            className={`block w-full px-3.5 py-2 text-left font-semibold border-b border-slate-100 transition ${
+                              coupon.isPinned
+                                ? "text-amber-900 bg-amber-50 hover:bg-amber-100"
+                                : "text-amber-700 hover:bg-amber-50"
+                            }`}
+                            type="button"
+                            disabled={pinningId === coupon.id}
+                            onClick={() => handleTogglePin(coupon)}
+                          >
+                            {pinningId === coupon.id
+                              ? "Updating..."
+                              : coupon.isPinned
+                              ? "📌 Unpin Post"
+                              : "📌 Pin to Top"}
+                          </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
