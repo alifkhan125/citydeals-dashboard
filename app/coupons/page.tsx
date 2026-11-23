@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { AxiosError } from "axios";
+import { useQueryClient } from "@tanstack/react-query";
 import Modal from "@/components/Modal";
 import DeleteWarningModal from "@/components/DeleteWarningModal";
 import ConfirmationModal from "@/components/ConfirmationModal";
@@ -24,6 +25,8 @@ import {
   useUpdateCoupon,
   useNotifyNearbyCoupon,
 } from "@/hooks/useCoupons";
+import { settingsApi } from "@/api/settings";
+import { useStoreSettings } from "@/hooks/useStoreSettings";
 
 const assetBase = "/assets/dashboard/";
 
@@ -42,6 +45,7 @@ export default function CouponsPage() {
   const { data: merchants = [], isLoading: isMerchantsLoading } = useCouponMerchants();
   const { data: areas = [], isLoading: isAreasLoading } = useCouponAreas();
   const { data: categories = [], isLoading: isCategoriesLoading } = useCouponCategories();
+  const { data: storeSettings } = useStoreSettings();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const { data: couponPage, isLoading: isCouponsLoading } = useAdminCoupons({
@@ -80,6 +84,56 @@ export default function CouponsPage() {
   const [selectedCouponIds, setSelectedCouponIds] = useState<string[]>([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [pinningId, setPinningId] = useState<string | null>(null);
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+  const [reorderedCoupons, setReorderedCoupons] = useState<CouponItem[]>([]);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const queryClient = useQueryClient();
+
+  const handleOpenReorderModal = async () => {
+    try {
+      const orderIds = await couponsApi.getOrder();
+      const currentList = [...coupons];
+      if (Array.isArray(orderIds) && orderIds.length > 0) {
+        const orderMap = new Map<string, number>();
+        orderIds.forEach((id, index) => orderMap.set(id, index));
+        currentList.sort((a, b) => {
+          const indexA = orderMap.has(a.id) ? orderMap.get(a.id)! : 999999;
+          const indexB = orderMap.has(b.id) ? orderMap.get(b.id)! : 999999;
+          return indexA - indexB;
+        });
+      }
+      setReorderedCoupons(currentList);
+      setIsReorderModalOpen(true);
+    } catch {
+      setReorderedCoupons([...coupons]);
+      setIsReorderModalOpen(true);
+    }
+  };
+
+  const handleMoveCoupon = (index: number, direction: "up" | "down") => {
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= reorderedCoupons.length) return;
+    const updated = [...reorderedCoupons];
+    const temp = updated[index];
+    updated[index] = updated[targetIndex];
+    updated[targetIndex] = temp;
+    setReorderedCoupons(updated);
+  };
+
+  const handleSaveCouponOrder = async () => {
+    try {
+      setIsSavingOrder(true);
+      await couponsApi.updateOrder(reorderedCoupons.map((c) => c.id));
+      toast.success("Display priority order saved successfully", { title: "Priority Saved" });
+      setIsReorderModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to save coupon order"), { title: "Order Save Failed" });
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
 
   // Form states
   const [offer, setOffer] = useState("");
@@ -126,6 +180,53 @@ export default function CouponsPage() {
       toast.error(getErrorMessage(error, "Could not generate coupon report"), { title: "Export failed" });
     } finally {
       setReportExportingId(null);
+    }
+  }
+
+  async function handleDownloadCouponQr(coupon: CouponItem) {
+    try {
+      setOpenActionId(null);
+      const shareTarget = coupon.shareSlug || coupon.id;
+
+      // Always fetch and use the latest Base URL saved in the database
+      let dbBaseUrl = "";
+      try {
+        const storeLinks = await settingsApi.getStoreLinks();
+        if (storeLinks?.baseUrl?.trim()) {
+          dbBaseUrl = storeLinks.baseUrl.trim();
+        }
+      } catch (err) {
+        console.warn("Could not fetch store links from database:", err);
+      }
+
+      if (!dbBaseUrl && storeSettings?.baseUrl?.trim()) {
+        dbBaseUrl = storeSettings.baseUrl.trim();
+      }
+
+      if (!dbBaseUrl && typeof window !== "undefined" && window.location.origin) {
+        dbBaseUrl = window.location.origin;
+      }
+
+      const cleanBaseUrl = dbBaseUrl ? dbBaseUrl.replace(/\/+$/, "") : "https://citydeals.app";
+      const targetUrl = `${cleanBaseUrl}/c/${shareTarget}/open`;
+      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&margin=20&data=${encodeURIComponent(targetUrl)}`;
+
+      const response = await fetch(qrImageUrl);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      const safeMerchant = (coupon.merchant?.name || "Merchant").replace(/[^a-zA-Z0-9]/g, "-");
+      const safeTitle = coupon.title.slice(0, 25).replace(/[^a-zA-Z0-9]/g, "-");
+      link.download = `QR-${safeMerchant}-${safeTitle}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success(`Printable QR code downloaded (${cleanBaseUrl})`, { title: "QR Ready" });
+    } catch (error) {
+      console.error("Failed to download QR code:", error);
+      toast.error(getErrorMessage(error, "Could not download QR code"), { title: "QR Download Failed" });
     }
   }
 
@@ -232,6 +333,31 @@ export default function CouponsPage() {
       toast.error(getErrorMessage(error, "Failed to update coupon status"), {
         title: "Status Update Failed",
       });
+    }
+  }
+
+  async function handleTogglePin(coupon: CouponItem) {
+    setOpenActionId(null);
+    if (pinningId) return;
+    const nextPinState = !coupon.isPinned;
+    setPinningId(coupon.id);
+    try {
+      await couponsApi.togglePin(coupon.id, nextPinState);
+      queryClient.invalidateQueries({ queryKey: ["admin-coupons"] });
+      queryClient.invalidateQueries({ queryKey: ["coupons"] });
+      toast.success(
+        nextPinState
+          ? `Pinned "${coupon.title}" to top of App feed`
+          : `Unpinned "${coupon.title}"`,
+        { title: nextPinState ? "Post Pinned" : "Post Unpinned" },
+      );
+    } catch (error) {
+      console.error("Failed to toggle pin state:", error);
+      toast.error(getErrorMessage(error, "Failed to update pin state"), {
+        title: "Pin Update Failed",
+      });
+    } finally {
+      setPinningId(null);
     }
   }
 
@@ -426,13 +552,8 @@ export default function CouponsPage() {
     }
 
     const trimmedCode = couponCode.trim().toUpperCase();
-    if (!trimmedCode) {
-      showToast("Coupon Code is required (6 to 10 characters)");
-      return;
-    }
-
-    if (trimmedCode.length < 6 || trimmedCode.length > 10) {
-      showToast("Coupon Code must be between 6 and 10 characters");
+    if (trimmedCode && (trimmedCode.length < 3 || trimmedCode.length > 15)) {
+      showToast("Coupon Code must be between 3 and 15 characters if provided");
       return;
     }
 
@@ -466,7 +587,7 @@ export default function CouponsPage() {
         merchantId: business,
         categoryId: category || undefined,
         imageUrl: uploadedImageUrl || undefined,
-        couponCode: trimmedCode,
+        couponCode: trimmedCode || undefined,
         redemptionLimit: redemptionLimit ? parseInt(redemptionLimit, 10) : undefined,
         redemptionFrequency: freqMap[frequency] || "ONE_TIME",
         discussion: discussion.trim() || undefined,
@@ -603,6 +724,13 @@ export default function CouponsPage() {
             New coupon
           </button>
           <button type="button" onClick={() => setIsImportOpen(true)} className="h-12 flex-1 rounded-xl border border-orange-300 bg-white px-5 text-sm font-semibold text-orange-700 transition hover:bg-orange-50 sm:flex-none">Import CSV</button>
+          <button
+            type="button"
+            onClick={handleOpenReorderModal}
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:flex-none"
+          >
+            ↕ Reorder Priority
+          </button>
           </div>
         </div>
 
@@ -681,8 +809,8 @@ export default function CouponsPage() {
               <select className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100" value={audienceFilter} onChange={(event) => setAudienceFilter(event.target.value)}>
                 <option value="ALL">All audiences</option>
                 <option value="ALL_USERS">All users</option>
-                <option value="BIRTHDAY_USERS_ONLY">Birthday users only</option>
-                <option value="ALL_USERS_AND_BIRTHDAY_GIFT">All + birthday gift</option>
+                <option value="BIRTHDAY_USERS_ONLY">Freebie! users only</option>
+                <option value="ALL_USERS_AND_BIRTHDAY_GIFT">All users + Freebie!</option>
               </select>
             </label>
           </div>
@@ -760,7 +888,20 @@ export default function CouponsPage() {
                         </small>
                       </span>
                     </div>
-                    <div className="relative shrink-0">
+                    <div className="relative flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        title={coupon.isPinned ? "Unpin post from top" : "Pin post to top of mobile feed"}
+                        disabled={pinningId === coupon.id}
+                        className={`grid size-9 place-items-center rounded-lg border text-sm transition-all ${
+                          coupon.isPinned
+                            ? "border-amber-400 bg-amber-50 text-amber-900 ring-2 ring-amber-300/60"
+                            : "border-slate-300 bg-white text-slate-400 hover:border-amber-300 hover:text-amber-700"
+                        }`}
+                        onClick={() => handleTogglePin(coupon)}
+                      >
+                        📌
+                      </button>
                       <button
                         type="button"
                         aria-expanded={openActionId === coupon.id}
@@ -771,7 +912,23 @@ export default function CouponsPage() {
                         ⋮
                       </button>
                       {openActionId === coupon.id && (
-                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                        <div className="fixed z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                          <button
+                            className={`block w-full px-3.5 py-2 text-left font-semibold border-b border-slate-100 transition ${
+                              coupon.isPinned
+                                ? "text-amber-900 bg-amber-50 hover:bg-amber-100"
+                                : "text-amber-700 hover:bg-amber-50"
+                            }`}
+                            type="button"
+                            disabled={pinningId === coupon.id}
+                            onClick={() => handleTogglePin(coupon)}
+                          >
+                            {pinningId === coupon.id
+                              ? "Updating..."
+                              : coupon.isPinned
+                              ? "📌 Unpin Post"
+                              : "📌 Pin to Top"}
+                          </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -787,6 +944,13 @@ export default function CouponsPage() {
                             onClick={() => exportCouponDetailPdf(coupon)}
                           >
                             {reportExportingId === coupon.id ? "Preparing PDF..." : "Export full PDF"}
+                          </button>
+                          <button
+                            className="block w-full px-3.5 py-2 text-left font-medium text-emerald-700 hover:bg-emerald-50"
+                            type="button"
+                            onClick={() => handleDownloadCouponQr(coupon)}
+                          >
+                            Download QR Code
                           </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
@@ -814,7 +978,12 @@ export default function CouponsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {coupon.isPinned && (
+                      <span className="inline-flex h-6 items-center gap-1 rounded-full bg-amber-100 px-2.5 text-xs font-semibold text-amber-900 border border-amber-300 shadow-2xs">
+                        📌 Pinned to Top
+                      </span>
+                    )}
                     <span className="inline-flex h-6 items-center rounded bg-[#ffedd5] px-2.5 text-xs font-medium text-[#f97316]">
                       {coupon.category?.name || "General"}
                     </span>
@@ -866,9 +1035,9 @@ export default function CouponsPage() {
             </div>
 
             <div className="coupons-desktop-table mt-4 overflow-x-auto overflow-y-visible rounded-lg border border-slate-200">
-              <div className="min-w-[1120px]">
+              <div className="min-w-[1150px]">
                 {/* Table Header */}
-                <div className="grid h-[55px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
+                <div className="grid h-[55px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_130px_80px_80px_100px_110px_90px] items-center bg-slate-100 text-sm leading-5 text-[#315576]">
                   <div className="border-r border-slate-300 px-3"><input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection} aria-label="Select current page" /></div>
                   <div className="border-r border-slate-300 px-4">Offer</div>
                   <div className="border-r border-slate-300 px-4">Business</div>
@@ -884,7 +1053,7 @@ export default function CouponsPage() {
                 {/* Table Body */}
                 {paginatedCoupons.map((coupon) => (
                   <div
-                    className="grid h-[60px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_140px_90px_80px_110px_120px_70px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
+                    className="grid h-[60px] grid-cols-[42px_minmax(250px,1.5fr)_minmax(170px,1fr)_110px_130px_80px_80px_100px_110px_90px] items-center border-b border-dashed border-slate-200 bg-white transition-colors hover:bg-slate-50/70 last:border-b-0"
                     key={coupon.id}
                   >
                     <div className="px-3"><input type="checkbox" checked={selectedCouponIds.includes(coupon.id)} onChange={() => toggleCouponSelection(coupon.id)} aria-label={`Select ${coupon.title}`} /></div>
@@ -901,10 +1070,26 @@ export default function CouponsPage() {
                           unoptimized={!!coupon.imageUrl}
                         />
                       </span>
-                      <strong className="block truncate text-sm font-normal leading-5 text-slate-900">
-                        {coupon.title}
-                      </strong>
-                      {coupon.audience && coupon.audience !== "ALL_USERS" && <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">{coupon.audience === "BIRTHDAY_USERS_ONLY" ? "Birthday only" : "Birthday gift"}</span>}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <strong className="block truncate text-sm font-normal leading-5 text-slate-900">
+                            {coupon.title}
+                          </strong>
+                          {coupon.isPinned && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 border border-amber-300 shadow-2xs shrink-0"
+                              title="Pinned to top of mobile feed"
+                            >
+                              📌 Pinned
+                            </span>
+                          )}
+                        </div>
+                        {coupon.audience && coupon.audience !== "ALL_USERS" && (
+                          <span className="mt-0.5 inline-block rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+                            {coupon.audience === "BIRTHDAY_USERS_ONLY" ? "Freebie! only" : "Freebie! + All"}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Business column */}
@@ -949,18 +1134,47 @@ export default function CouponsPage() {
                     </div>
 
                     {/* Actions column */}
-                    <div className="relative flex justify-center px-4">
+                    <div className="relative flex items-center justify-center gap-1 px-2">
+                      <button
+                        type="button"
+                        title={coupon.isPinned ? "Unpin post from top" : "Pin post to top of mobile feed"}
+                        disabled={pinningId === coupon.id}
+                        className={`grid size-8 place-items-center rounded-lg border text-xs transition-all ${
+                          coupon.isPinned
+                            ? "border-amber-400 bg-amber-50 text-amber-900 ring-2 ring-amber-300/60 hover:bg-amber-100"
+                            : "border-slate-300 bg-white text-slate-400 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50"
+                        }`}
+                        onClick={() => handleTogglePin(coupon)}
+                      >
+                        📌
+                      </button>
                       <button
                         type="button"
                         aria-expanded={openActionId === coupon.id}
                         aria-label={`Open actions for ${coupon.title}`}
-                        className="grid size-9 place-items-center rounded-lg border border-slate-300 bg-white text-lg font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
+                        className="grid size-8 place-items-center rounded-lg border border-slate-300 bg-white text-base font-bold leading-none text-[#0c4a6e] shadow-sm transition-colors hover:border-[#0c4a6e] hover:bg-sky-50"
                         onClick={(event) => toggleActionMenu(event, coupon.id)}
                       >
                         ⋮
                       </button>
                       {openActionId === coupon.id && (
-                        <div className="fixed z-50 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                        <div className="fixed z-50 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-xl" style={actionMenuPosition}>
+                          <button
+                            className={`block w-full px-3.5 py-2 text-left font-semibold border-b border-slate-100 transition ${
+                              coupon.isPinned
+                                ? "text-amber-900 bg-amber-50 hover:bg-amber-100"
+                                : "text-amber-700 hover:bg-amber-50"
+                            }`}
+                            type="button"
+                            disabled={pinningId === coupon.id}
+                            onClick={() => handleTogglePin(coupon)}
+                          >
+                            {pinningId === coupon.id
+                              ? "Updating..."
+                              : coupon.isPinned
+                              ? "📌 Unpin Post"
+                              : "📌 Pin to Top"}
+                          </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-slate-700 hover:bg-slate-50"
                             type="button"
@@ -976,6 +1190,13 @@ export default function CouponsPage() {
                             onClick={() => exportCouponDetailPdf(coupon)}
                           >
                             {reportExportingId === coupon.id ? "Preparing PDF..." : "Export full PDF"}
+                          </button>
+                          <button
+                            className="block w-full px-3.5 py-2 text-left font-medium text-emerald-700 hover:bg-emerald-50"
+                            type="button"
+                            onClick={() => handleDownloadCouponQr(coupon)}
+                          >
+                            Download QR Code
                           </button>
                           <button
                             className="block w-full px-3.5 py-2 text-left text-[#f97316] hover:bg-orange-50"
@@ -1132,20 +1353,18 @@ export default function CouponsPage() {
 
               <label className="grid gap-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-800">Coupon Code *</span>
-                  <span className={`text-[11px] font-medium ${couponCode.length > 0 && couponCode.length < 6 ? "text-amber-600" : "text-slate-400"}`}>
-                    {couponCode.length > 0 && couponCode.length < 6 ? `Min 6 (${couponCode.length}/10)` : `${couponCode.length}/10`}
+                  <span className="text-xs font-semibold text-slate-800">Coupon Code (Optional)</span>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    {couponCode.length > 0 ? `${couponCode.length}/10` : "Optional"}
                   </span>
                 </div>
                 <input
-                  required
                   value={couponCode}
                   onChange={(e) => {
                     const formatted = e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 10);
                     setCouponCode(formatted);
                   }}
-                  placeholder="e.g. PIZZA20"
-                  minLength={6}
+                  placeholder="e.g. PIZZA20 (Optional)"
                   maxLength={10}
                   className="h-10 w-full rounded-xl border border-slate-200/70 bg-[#f8fafc] px-3.5 font-mono text-sm uppercase tracking-wider text-slate-800 placeholder:font-sans placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-400 outline-none transition-colors focus:border-slate-400 focus:bg-white"
                 />
@@ -1161,10 +1380,10 @@ export default function CouponsPage() {
                 className="h-10 w-full rounded-xl border border-slate-200/70 bg-[#f8fafc] px-3.5 text-sm text-slate-800 outline-none transition-colors focus:border-slate-400 focus:bg-white"
               >
                 <option value="ALL_USERS">All users</option>
-                <option value="BIRTHDAY_USERS_ONLY">Birthday users only</option>
-                <option value="ALL_USERS_AND_BIRTHDAY_GIFT">All users + birthday gift</option>
+                <option value="BIRTHDAY_USERS_ONLY">Freebie! users only (100% Free, zero purchase)</option>
+                <option value="ALL_USERS_AND_BIRTHDAY_GIFT">All users + Freebie! gift</option>
               </select>
-              <span className="text-[11px] text-slate-500">Birthday options automatically connect this coupon to the birthday notification and claim flow.</span>
+              <span className="text-[11px] text-slate-500">Freebie! options connect this coupon to the Freebie! claim flow (100% free items for subscribers with no purchase needed).</span>
             </label>
 
             {/* Row 3: Redemption Limit & Expires */}
@@ -1284,6 +1503,82 @@ export default function CouponsPage() {
         importCsv={couponsApi.importCsv}
         onImported={() => setIsImportOpen(false)}
       />
+
+      {/* Reorder / Priority Ordering Modal */}
+      <Modal
+        isOpen={isReorderModalOpen}
+        onClose={() => !isSavingOrder && setIsReorderModalOpen(false)}
+        title="Arrange Deal Display Priority"
+        maxWidth="max-w-[620px]"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-slate-500">
+            Set the display order of coupon deals shown on the mobile app Home screen. Deals at the top (#1, #2, ...) appear first to users.
+          </p>
+
+          <div className="max-h-[460px] overflow-y-auto divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+            {reorderedCoupons.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-400">No coupons available to order</p>
+            ) : (
+              reorderedCoupons.map((coupon, index) => (
+                <div key={coupon.id} className="flex items-center justify-between p-3.5 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-100 font-mono text-xs font-bold text-orange-700 flex-shrink-0">
+                      #{index + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm text-slate-900 truncate">{coupon.title}</div>
+                      <div className="text-xs text-slate-500 truncate">
+                        {coupon.merchant?.name || "Merchant"} • {coupon.category?.name || "Deal"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                    <button
+                      type="button"
+                      disabled={index === 0 || isSavingOrder}
+                      onClick={() => handleMoveCoupon(index, "up")}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Move Up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === reorderedCoupons.length - 1 || isSavingOrder}
+                      onClick={() => handleMoveCoupon(index, "down")}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Move Down"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              onClick={() => setIsReorderModalOpen(false)}
+              disabled={isSavingOrder}
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveCouponOrder}
+              disabled={isSavingOrder || reorderedCoupons.length === 0}
+              className="rounded-xl bg-[#f97316] px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:opacity-50"
+            >
+              {isSavingOrder ? "Saving..." : "Save Priority Order"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Confirmation Modal for Notify Nearby */}
       <Modal

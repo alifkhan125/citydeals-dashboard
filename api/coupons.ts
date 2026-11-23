@@ -4,6 +4,7 @@ export interface CouponItem {
   id: string;
   title: string;
   description: string;
+  shareSlug?: string | null;
   imageUrl?: string | null;
   couponCode?: string | null;
   couponLink?: string | null;
@@ -19,6 +20,8 @@ export interface CouponItem {
   merchantId: string;
   categoryId?: string | null;
   isWhitelisted?: boolean;
+  isPinned?: boolean;
+  pinnedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   merchant?: {
@@ -122,4 +125,7 @@ export const couponsApi = {
   importCsv: async (csv: string): Promise<{ imported: number; failed: number; errors?: Array<{ row: number; message: string }> }> => (apiClient.post("/coupons/admin/import", { csv }) as any),
   notifyNearby: (id: string) => apiClient.post<{ sent: number; message: string }>(`/coupons/${id}/notify-nearby`),
   report: (id: string) => apiClient.get<unknown, CouponReport>(`/admin/coupons/${id}/report`),
+  togglePin: (id: string, isPinned?: boolean) => apiClient.patch(`/coupons/${id}/pin`, { isPinned }),
+  getOrder: (): Promise<string[]> => apiClient.get("/coupons/admin/order"),
+  updateOrder: (couponIds: string[]) => apiClient.post("/coupons/admin/order", { couponIds }),
 };

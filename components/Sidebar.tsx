@@ -46,6 +46,12 @@ const menuSections = [
         requiredPermission: "create-edit-coupons",
       },
       {
+        label: "Freebie! Offers",
+        icon: "imgTicket.svg",
+        href: "/birthday-gifts",
+        requiredPermission: "create-edit-coupons",
+      },
+      {
         label: "Redemptions",
         icon: "imgTicketExpired.svg",
         href: "/redemptions",
