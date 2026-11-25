@@ -10,7 +10,13 @@ export interface UploadResult {
   bytes: number;
 }
 
+export const MAX_UPLOAD_SIZE_BYTES = 3 * 1024 * 1024; // 3MB
+
 export async function uploadImage(file: File, folder: string = 'general'): Promise<UploadResult> {
+  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    throw new Error('Image size exceeds 3MB limit. Please choose an image smaller than 3MB.');
+  }
+
   const formData = new FormData();
   formData.append('file', file);
   formData.append('folder', folder);

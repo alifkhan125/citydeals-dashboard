@@ -72,6 +72,12 @@ export default function ProfilePage() {
       return;
     }
 
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error("⚠️ Photo is too large! Maximum allowed size is 3MB.");
+      event.target.value = "";
+      return;
+    }
+
     try {
       setIsUploadingPhoto(true);
       const uploaded = await uploadImage(file, "avatars");

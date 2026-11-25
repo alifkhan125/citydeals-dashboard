@@ -159,6 +159,12 @@ export default function CouponsPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 3 * 1024 * 1024) {
+      showToast("⚠️ Image is too large! Maximum allowed size is 3MB.");
+      event.target.value = "";
+      return;
+    }
+
     setLogoFile(file);
     const nextPreview = URL.createObjectURL(file);
     setLogoPreview(nextPreview);
@@ -1275,7 +1281,7 @@ export default function CouponsPage() {
               className="flex h-10 cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50"
               htmlFor="coupon-logo-upload"
             >
-              Upload Coupon Image
+              Upload Coupon Image (Max 3MB)
               <input
                 className="sr-only"
                 id="coupon-logo-upload"

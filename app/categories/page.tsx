@@ -80,6 +80,12 @@ export default function CategoriesPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 3 * 1024 * 1024) {
+      showToast("⚠️ Icon image is too large! Maximum allowed size is 3MB.");
+      event.target.value = "";
+      return;
+    }
+
     if (iconPreview && iconPreview.startsWith("blob:")) {
       URL.revokeObjectURL(iconPreview);
     }

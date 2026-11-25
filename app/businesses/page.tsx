@@ -183,6 +183,12 @@ export default function BusinessesPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 3 * 1024 * 1024) {
+      showToast("⚠️ Logo image is too large! Maximum allowed size is 3MB.");
+      event.target.value = "";
+      return;
+    }
+
     if (logoPreview && logoPreview.startsWith("blob:")) {
       URL.revokeObjectURL(logoPreview);
     }
