@@ -86,6 +86,7 @@ export default function BusinessesPage() {
   // Logo file / preview
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   // Form states
   const [name, setName] = useState("");
@@ -184,11 +185,15 @@ export default function BusinessesPage() {
     if (!file) return;
 
     if (file.size > 3 * 1024 * 1024) {
-      showToast("⚠️ Logo image is too large! Maximum allowed size is 3MB.");
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      const errMsg = `⚠️ File size (${sizeMb}MB) exceeds 3MB limit! Please select a smaller logo.`;
+      setLogoError(errMsg);
+      showToast(errMsg);
       event.target.value = "";
       return;
     }
 
+    setLogoError(null);
     if (logoPreview && logoPreview.startsWith("blob:")) {
       URL.revokeObjectURL(logoPreview);
     }
@@ -235,12 +240,14 @@ export default function BusinessesPage() {
     );
     setLogoFile(null);
     setLogoPreview(null);
+    setLogoError(null);
     setIsDrawerOpen(true);
   }
 
   function handleEditBusiness(business: BusinessItem) {
     setOpenActionId(null);
     setEditingBusiness(business);
+    setLogoError(null);
     setName(business.name || "");
     setTitleText(business.titleText || "");
     setCategoryId(business.categoryId || "");
@@ -279,6 +286,7 @@ export default function BusinessesPage() {
   function handleCloseDrawer() {
     setIsDrawerOpen(false);
     setEditingBusiness(null);
+    setLogoError(null);
     if (logoPreview && logoPreview.startsWith("blob:")) {
       URL.revokeObjectURL(logoPreview);
     }
@@ -842,22 +850,32 @@ export default function BusinessesPage() {
               />
             </div>
             <div className="flex-1">
-              <label
-                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-[#e5e7eb] bg-white px-4 text-sm font-medium text-gray-900 shadow-sm transition hover:bg-gray-100"
-                htmlFor="business-logo-upload"
-              >
-                Upload Logo
-                <input
-                  className="sr-only"
-                  id="business-logo-upload"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoChange}
-                />
-              </label>
-              <p className="mt-1 text-xs text-slate-500">
-                PNG, JPG or WebP up to 10MB
-              </p>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <label
+                  className="inline-flex h-10 cursor-pointer items-center justify-center rounded-lg border border-[#e5e7eb] bg-white px-4 text-sm font-medium text-gray-900 shadow-sm transition hover:bg-gray-100"
+                  htmlFor="business-logo-upload"
+                >
+                  Upload Logo
+                  <input
+                    className="sr-only"
+                    id="business-logo-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoChange}
+                  />
+                </label>
+                <p className="text-xs text-slate-500">
+                  PNG, JPG or WebP (Max 3MB)
+                </p>
+              </div>
+              {logoError && (
+                <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 animate-in fade-in">
+                  <svg className="size-4 shrink-0 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span>{logoError}</span>
+                </div>
+              )}
             </div>
           </div>
 

@@ -146,6 +146,7 @@ export default function CouponsPage() {
   const [discussion, setDiscussion] = useState("");
   const [terms, setTerms] = useState("");
   const [audience, setAudience] = useState<"ALL_USERS" | "BIRTHDAY_USERS_ONLY" | "ALL_USERS_AND_BIRTHDAY_GIFT">("ALL_USERS");
+  const [imageError, setImageError] = useState<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -160,11 +161,15 @@ export default function CouponsPage() {
     if (!file) return;
 
     if (file.size > 3 * 1024 * 1024) {
-      showToast("⚠️ Image is too large! Maximum allowed size is 3MB.");
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      const errMsg = `⚠️ File size (${sizeMb}MB) exceeds 3MB limit! Please select a smaller image.`;
+      setImageError(errMsg);
+      showToast(errMsg);
       event.target.value = "";
       return;
     }
 
+    setImageError(null);
     setLogoFile(file);
     const nextPreview = URL.createObjectURL(file);
     setLogoPreview(nextPreview);
@@ -286,6 +291,7 @@ export default function CouponsPage() {
     setDiscussion("");
     setTerms("");
     setAudience("ALL_USERS");
+    setImageError(null);
     setLogoFile(null);
     setLogoPreview(null);
     setIsModalOpen(true);
@@ -294,12 +300,14 @@ export default function CouponsPage() {
   function handleCloseModal() {
     setIsModalOpen(false);
     setEditingCoupon(null);
+    setImageError(null);
     setLogoFile(null);
     setLogoPreview(null);
   }
 
   function handleEditCoupon(coupon: CouponItem) {
     setOpenActionId(null);
+    setImageError(null);
     setEditingCoupon(coupon);
     setOffer(coupon.title);
     setBusiness(coupon.merchantId || coupon.merchant?.id || "");
@@ -1266,30 +1274,45 @@ export default function CouponsPage() {
       >
         <form onSubmit={handleSaveCoupon} className="flex flex-col gap-4">
           {/* Top Logo Upload Card */}
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-3.5">
-            <span className="relative size-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-              <Image
-                src={logoPreview ?? `${assetBase}imgLocationAvatar.png`}
-                alt="Upload preview"
-                fill
-                sizes="64px"
-                className="object-cover"
-                unoptimized={!!logoPreview}
-              />
-            </span>
-            <label
-              className="flex h-10 cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50"
-              htmlFor="coupon-logo-upload"
-            >
-              Upload Coupon Image (Max 3MB)
-              <input
-                className="sr-only"
-                id="coupon-logo-upload"
-                type="file"
-                accept="image/*"
-                onChange={handleLogoChange}
-              />
-            </label>
+          <div className="flex flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white p-3.5">
+            <div className="flex flex-wrap items-center gap-3.5">
+              <span className="relative size-16 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                <Image
+                  src={logoPreview ?? `${assetBase}imgLocationAvatar.png`}
+                  alt="Upload preview"
+                  fill
+                  sizes="64px"
+                  className="object-cover"
+                  unoptimized={!!logoPreview}
+                />
+              </span>
+              <div className="flex flex-1 flex-col gap-1.5">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <label
+                    className="flex h-10 cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 active:bg-slate-100"
+                    htmlFor="coupon-logo-upload"
+                  >
+                    Upload Coupon Image
+                    <input
+                      className="sr-only"
+                      id="coupon-logo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                    />
+                  </label>
+                  <span className="text-xs font-medium text-slate-500">Max size: 3MB</span>
+                </div>
+                {imageError && (
+                  <div className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 animate-in fade-in">
+                    <svg className="size-4 shrink-0 text-rose-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <span>{imageError}</span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Form Fields Card */}
